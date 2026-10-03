@@ -28,11 +28,17 @@ class HsvDetector:
         """주차 통로 색 마스크 (route_color 가 없으면 None)."""
         cfg = self.cfg
         if cfg.route_color == 'red':
-            return self.color_mask(frame, cfg.red_hsv_lo, cfg.red_hsv_hi) | \
+            mask = self.color_mask(frame, cfg.red_hsv_lo, cfg.red_hsv_hi) | \
                    self.color_mask(frame, cfg.red2_hsv_lo, cfg.red2_hsv_hi)
-        if cfg.route_color == 'blue':
-            return self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
-        return None
+        elif cfg.route_color == 'blue':
+            mask = self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
+        else:
+            return None
+        # 선처럼 세로로 긴 덩어리만 남긴다
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        keep = np.flatnonzero(stats[:, cv2.CC_STAT_HEIGHT] >= cfg.route_min_height * frame.shape[0])
+        keep = keep[keep > 0]
+        return np.where(np.isin(labels, keep), 255, 0).astype(np.uint8)
 
     def masks(self, frame):
         """처리 크기 frame -> {'left','right','crosswalk'} 마스크와 횡단보도 판정, 통로 상태."""

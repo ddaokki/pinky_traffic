@@ -73,6 +73,8 @@ class Config:
     blue_hsv_lo: List[int] = field(default_factory=lambda: [95, 70, 25])
     blue_hsv_hi: List[int] = field(default_factory=lambda: [135, 255, 255])
     route_min_area: float = 0.003    # 통로 색 면적 / 영상 면적 이 이상이면 '통로 보임'
+    route_min_height: float = 0.12   # 통로 색 덩어리는 키가 영상 높이의 이 비율 이상이어야 선으로 본다
+                                     # (카메라 아래 구석의 붉은 색 번짐(카펫)은 납작해서 걸러진다)
     route_only_row: float = 0.75     # 통로 색이 이 행보다 가까이 오면 흰색은 버리고 통로 색만 따라간다 (흰 벽 회피)
     park_stop_m: float = 0.15        # 통로 안에서 라이다 전방 거리가 이보다 가까우면 주차 완료
     # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)

@@ -127,3 +127,11 @@ def test_route_in_shadow_at_bay_end():
     for color, route in [((20, 20, 55), 'red'), ((60, 25, 10), 'blue')]:
         p, _, _ = HsvDetector(Config(route_color=route)).detect(lines(dark_floor.copy(), color))
         assert p.route_near and p.ok, route
+
+
+def test_reddish_carpet_at_bottom_corner_is_not_route():
+    # 2026-10-03 현장: 카메라 아래 오른쪽 구석의 카펫이 붉게 찍혀(46x16 px) 통로로 착각했다
+    img = lines(floor(), WHITE)
+    cv2.rectangle(img, (274, 224), (319, 239), (30, 30, 70), -1)
+    p, _, _ = HsvDetector(Config(route_color='red')).detect(img)
+    assert not p.route_seen and not p.route_near and p.ok
