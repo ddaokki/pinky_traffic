@@ -22,19 +22,20 @@ Pinky 카메라는 바닥에서 6.5cm 높이, 화각 66도다. 바로 앞 10cm �
 | 횡단보도 | **직선 구간**, 곡선이 끝나고 50cm 이상 뒤 | 정지 전에 차선을 똑바로 봐야 한다 |
 | 횡단보도 모양 | 진행 방향으로 15cm 짜리 줄 4개를 차선 안에 나란히 | |
 | 횡단보도 색 | 가능하면 차선과 다른 색 | 색으로 찾는 모드(hsv)가 훨씬 안정적. 같은 색이어도 동작은 한다 |
+| 같은 색(흰색)일 때 | 줄 4개를 **좌우 차선에 붙이지 말고 3~5cm 띄운다**, 줄끼리도 띄운다 | 붙으면 차선과 한 덩어리로 보여 줄무늬(3개 이상)로 못 센다 |
 | 주변 | 트랙 근처에 테이프와 같은 색 물건(흰 종이, 케이블) 치우기 | 오검출 |
 
 주행 방향은 한쪽으로 정한다 (반시계면 안쪽 선이 left).
 
 ## 2. 로봇 1대 준비
 
-로봇과 PC 가 같은 공유기에 있고 `ROS_DOMAIN_ID` 가 같아야 한다. (`.bashrc` 별칭: `pinky1`=192.168.0.5, `pinky2`=192.168.0.7, `ros23`/`ros24`)
+로봇과 PC 가 같은 공유기에 있고 `ROS_DOMAIN_ID` 가 같아야 한다. (`.bashrc` 별칭: `pinky1`=192.168.0.1 (현장 값. .bashrc 별칭이 .5 면 고칠 것), `pinky2`=192.168.0.7, `ros23`/`ros24`)
 
 ```bash
 # PC: 카메라 노드 파일을 로봇에 복사
-scripts/robot_install.sh 192.168.0.5
+scripts/robot_install.sh 192.168.0.1
 
-# 로봇 (ssh pinky@192.168.0.5) — 터미널 2개
+# 로봇 (ssh pinky@192.168.0.1) — 터미널 2개
 echo $ROS_DOMAIN_ID                                   # 이 값을 PC 에서도 쓴다
 ros2 launch pinky_bringup bringup_robot.launch.xml
 python3 ~/camera_pub.py --ros-args -p width:=320 -p height:=240 -p fps:=15

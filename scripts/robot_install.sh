@@ -1,6 +1,6 @@
 #!/bin/bash
 # 로봇에 카메라 발행 노드(파일 하나)를 복사한다.
-#   scripts/robot_install.sh 192.168.0.5
+#   scripts/robot_install.sh 192.168.0.1
 set -e
 IP="${1:?로봇 IP}"
 WS="$(cd "$(dirname "$0")/.." && pwd)"
