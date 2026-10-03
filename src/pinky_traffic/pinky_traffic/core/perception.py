@@ -175,9 +175,20 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
 
 
 def is_wall(box_mask, cfg, w, h):
-    """덩어리가 선이 아니라 넓은 면(흰 벽, 종이)인가: 영상 폭의 lane_wall_width 보다 넓은 행이 많다."""
+    """덩어리가 선이 아니라 넓은 면(옆에 붙은 흰 벽, 종이)인가: lane_wall_width 보다 넓은 행이 많다."""
     wide_rows = int(np.count_nonzero(box_mask.sum(axis=1) > cfg.lane_wall_width * w))
     return wide_rows >= cfg.lane_wall_rows * h
+
+
+def remove_wall_base(mask, cfg):
+    """정면 흰 벽의 밑단: ROI 위 경계부터 아래로, 영상 폭의 lane_wall_base 보다 넓게 흰 행들을 지운다.
+    벽 밑단에 닿은 차선도 덩어리째 버려지지 않도록 행만 지운다."""
+    h, w = mask.shape[:2]
+    y = int(cfg.roi_top * h)
+    while y < h and np.count_nonzero(mask[y]) > cfg.lane_wall_base * w:
+        mask[y] = 0
+        y += 1
+    return mask
 
 
 def _is_u_shape(xs, bottom_rows, ref):

@@ -82,6 +82,12 @@ class Config:
     # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)
     lane_wall_width: float = 0.30
     lane_wall_rows: float = 0.12
+    lane_wall_base: float = 0.50     # ROI 위 경계 바로 아래 행이 이 폭보다 넓게 희면 벽 밑단으로 보고 지운다
+    # 흰 벽이 화면을 채우면 카메라가 어둡게 찍어 테이프 밝기(V)가 170 아래로 떨어진다 (현장 146).
+    # 바닥(화면 아래쪽) 밝기 중앙값 + lane_v_margin 까지 V 하한을 내린다. lane_hsv_lo 의 V 보다 올리지는 않는다.
+    lane_auto_v: bool = True
+    lane_v_margin: int = 60
+    lane_v_min: int = 110
 
     def update(self, values: dict):
         """알고 있는 키만 형변환해서 반영. 반영된 키 목록을 돌려준다."""

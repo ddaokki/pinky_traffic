@@ -143,3 +143,12 @@ def test_dark_red_blob_in_bottom_corner_is_not_route():
     cv2.rectangle(img, (0, 191), (48, 239), (35, 35, 65), -1)
     p, _, _ = HsvDetector(Config(route_color='red')).detect(img)
     assert not p.route_seen and p.ok
+
+
+def test_wall_base_strip_in_front_is_not_a_lane():
+    # 2026-10-03 현장: 정면 흰 벽의 밑단이 ROI 경계 바로 아래에 얇은 가로 띠로 남아 차선으로 잡혔다
+    img = lines(floor(), WHITE)
+    img[:int(H * 0.44)] = WHITE                       # 화면 위쪽은 벽
+    p, _, _ = HsvDetector(Config()).detect(img)
+    clean, _, _ = HsvDetector(Config()).detect(lines(floor(), WHITE))
+    assert p.ok and abs(p.offset - clean.offset) < 0.1

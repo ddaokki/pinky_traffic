@@ -8,7 +8,8 @@ import time
 import cv2
 import numpy as np
 
-from .perception import (LaneMemory, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to)
+from .perception import (LaneMemory, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
+                         remove_wall_base)
 
 
 class HsvDetector:
@@ -46,7 +47,12 @@ class HsvDetector:
         """처리 크기 frame -> {'left','right','crosswalk'} 마스크와 횡단보도 판정, 통로 상태."""
         cfg = self.cfg
         h, w = frame.shape[:2]
-        lane = self.color_mask(frame, cfg.lane_hsv_lo, cfg.lane_hsv_hi)
+        lane_lo = list(cfg.lane_hsv_lo)
+        if cfg.lane_auto_v:
+            floor_v = float(np.median(cv2.cvtColor(frame[int(0.6 * h):], cv2.COLOR_BGR2HSV)[..., 2]))
+            lane_lo[2] = int(min(lane_lo[2], max(cfg.lane_v_min, floor_v + cfg.lane_v_margin)))
+        self.lane_v = lane_lo[2]
+        lane = remove_wall_base(self.color_mask(frame, lane_lo, cfg.lane_hsv_hi), cfg)
         route = self.route_mask(frame)
         self.route_seen = self.route_near = False
         if route is not None and cv2.countNonZero(route) >= cfg.route_min_area * w * h:
