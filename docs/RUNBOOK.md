@@ -29,13 +29,13 @@ Pinky 카메라는 바닥에서 6.5cm 높이, 화각 66도다. 바로 앞 10cm �
 
 ## 2. 로봇 1대 준비
 
-로봇과 PC 가 같은 공유기에 있고 `ROS_DOMAIN_ID` 가 같아야 한다. (`.bashrc` 별칭: `pinky1`=192.168.0.1 (현장 값. .bashrc 별칭이 .5 면 고칠 것), `pinky2`=192.168.0.7, `ros23`/`ros24`)
+로봇과 PC 가 같은 공유기에 있고 `ROS_DOMAIN_ID` 가 같아야 한다. (`.bashrc` 별칭: `pinky1`=192.168.4.1 · 도메인 24 (2026-10-03 현장 값. .bashrc 별칭이 다르면 고칠 것), `pinky2`=192.168.0.7, `ros23`/`ros24`)
 
 ```bash
 # PC: 카메라 노드 파일을 로봇에 복사
-scripts/robot_install.sh 192.168.0.1
+scripts/robot_install.sh 192.168.4.1
 
-# 로봇 (ssh pinky@192.168.0.1) — 터미널 2개
+# 로봇 (ssh pinky@192.168.4.1) — 터미널 2개
 echo $ROS_DOMAIN_ID                                   # 이 값을 PC 에서도 쓴다
 ros2 launch pinky_bringup bringup_robot.launch.xml
 python3 ~/camera_pub.py --ros-args -p width:=320 -p height:=240 -p fps:=15
@@ -43,7 +43,7 @@ python3 ~/camera_pub.py --ros-args -p width:=320 -p height:=240 -p fps:=15
 
 ```bash
 # PC: 확인
-source scripts/env.sh 23                              # 로봇의 도메인 번호
+source scripts/env.sh 24                              # 로봇의 도메인 번호
 ros2 topic list                                       # /cmd_vel /odom /scan /camera/image_raw/compressed
 ros2 topic hz /camera/image_raw/compressed            # 10~15 Hz
 ros2 run rqt_image_view rqt_image_view                # 영상 확인
@@ -71,7 +71,7 @@ python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pink
 # 터미널 A
 scripts/dashboard.sh                 # 브라우저 http://localhost:8088
 # 터미널 B
-scripts/drive.sh pinky1 23           # 색(HSV) 으로 먼저
+scripts/drive.sh pinky1 24           # 색(HSV) 으로 먼저
 ```
 
 1. 대시보드에 pinky1 카드와 영상이 뜨는지 본다.
@@ -98,7 +98,7 @@ scripts/drive.sh pinky1 23           # 색(HSV) 으로 먼저
 [TRAINING.md](TRAINING.md) 대로 `models/best.pt` 를 만든 뒤:
 
 ```bash
-scripts/drive.sh pinky1 23 yolo
+scripts/drive.sh pinky1 24 yolo
 ```
 
 HSV 로 먼저 달리게 해 두면, 그 주행 영상을 그대로 학습 데이터로 쓸 수 있다.
@@ -108,13 +108,13 @@ HSV 로 먼저 달리게 해 두면, 그 주행 영상을 그대로 학습 데�
 1대가 그룹 2 까지 통과한 뒤에.
 
 ```bash
-# 로봇 2 준비는 2번과 같다 (도메인 번호만 다르다, 예: 24)
+# 로봇 2 준비는 2번과 같다 (도메인 번호만 pinky1 과 다르게, 예: 23)
 scripts/robot_install.sh 192.168.0.7
 
 # PC: 터미널 3개
 scripts/dashboard.sh
-scripts/drive.sh pinky1 23 yolo
-scripts/drive.sh pinky2 24 yolo
+scripts/drive.sh pinky1 24 yolo
+scripts/drive.sh pinky2 23 yolo
 ```
 
 - 대시보드에서 `횡단보도 한 대씩 통과` 를 켠다. 락 표시에 "통과 중 / 대기" 가 보인다.

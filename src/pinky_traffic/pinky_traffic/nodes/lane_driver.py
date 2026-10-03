@@ -21,6 +21,7 @@ from cv_bridge import CvBridge
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import CompressedImage, Image, LaserScan
 from std_msgs.msg import String
 
@@ -85,12 +86,12 @@ class LaneDriverNode(Node):
     def on_compressed(self, msg):
         frame = cv2.imdecode(np.frombuffer(msg.data, np.uint8), cv2.IMREAD_COLOR)
         if frame is not None:
-            self.handle(frame)
+            self.on_frame(frame)
 
     def on_image(self, msg):
-        self.handle(self.bridge.imgmsg_to_cv2(msg, 'bgr8'))
+        self.on_frame(self.bridge.imgmsg_to_cv2(msg, 'bgr8'))
 
-    def handle(self, frame):
+    def on_frame(self, frame):
         now = time.time()
         self.t_image = now
         front = self.front if now - self.t_scan < 1.0 else None     # 오래된 라이다 값은 쓰지 않는다
@@ -122,7 +123,8 @@ class LaneDriverNode(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
+    # Ctrl+C 때 rclpy 가 먼저 꺼지면 마지막 0 속도를 못 보낸다 -> 신호 처리는 파이썬(KeyboardInterrupt)에 맡긴다
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     node = LaneDriverNode()
     try:
         rclpy.spin(node)
