@@ -64,6 +64,21 @@ class Config:
     resource: str = 'crosswalk'
     dashboard_url: str = 'http://127.0.0.1:8088'
 
+    # ---------- 주차 통로 (흰 차선 끝에서 빨강/파랑 테이프로 이어지는 길) ----------
+    route_color: str = ''            # '' (안 씀) | 'red' | 'blue' : 이 로봇이 따라갈 통로 색
+    red_hsv_lo: List[int] = field(default_factory=lambda: [0, 70, 40])       # 빨강은 H 가 0 과 179 양 끝에
+    red_hsv_hi: List[int] = field(default_factory=lambda: [12, 255, 255])    # 걸쳐 있어서 범위를 두 개 쓴다
+    red2_hsv_lo: List[int] = field(default_factory=lambda: [165, 70, 40])   # V 하한이 낮은 건 칸 끝 그늘 때문
+    red2_hsv_hi: List[int] = field(default_factory=lambda: [179, 255, 255])
+    blue_hsv_lo: List[int] = field(default_factory=lambda: [95, 70, 25])
+    blue_hsv_hi: List[int] = field(default_factory=lambda: [135, 255, 255])
+    route_min_area: float = 0.003    # 통로 색 면적 / 영상 면적 이 이상이면 '통로 보임'
+    route_only_row: float = 0.75     # 통로 색이 이 행보다 가까이 오면 흰색은 버리고 통로 색만 따라간다 (흰 벽 회피)
+    park_stop_m: float = 0.15        # 통로 안에서 라이다 전방 거리가 이보다 가까우면 주차 완료
+    # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)
+    lane_wall_width: float = 0.30
+    lane_wall_rows: float = 0.12
+
     def update(self, values: dict):
         """알고 있는 키만 형변환해서 반영. 반영된 키 목록을 돌려준다."""
         changed = []
@@ -113,5 +128,6 @@ TUNABLE = [
     ('crosswalk_stop_sec', 0.0, 10.0, 0.5),
     ('crossing_sec', 1.0, 12.0, 0.5),
     ('obstacle_stop_m', 0.10, 0.60, 0.01),
+    ('park_stop_m', 0.05, 0.40, 0.01),
     ('conf', 0.1, 0.9, 0.05),
 ]

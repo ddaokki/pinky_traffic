@@ -17,6 +17,21 @@ CROSSING = 'crossing'
 BLOCKED = 'blocked'
 LOST = 'lost'
 ESTOP = 'estop'
+PARKED = 'parked'
+
+# LED (r, g, b): 달리는 중 초록, 서 있으면 빨강, 주차 통로 안에서는 통로 색, 주차 완료 초록
+LED_GREEN, LED_RED, LED_BLUE = (0, 255, 0), (255, 0, 0), (0, 0, 255)
+STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP)
+
+
+def led_color(state, in_route=False, route_color=''):
+    if state == PARKED:
+        return LED_GREEN
+    if state in STOPPED_STATES:
+        return LED_RED
+    if in_route and route_color in ('red', 'blue'):
+        return LED_RED if route_color == 'red' else LED_BLUE
+    return LED_GREEN
 
 
 class PID:
@@ -75,17 +90,25 @@ class LaneController:
         self.t_cw_seen = None
         self.last_w = 0.0
         self.crossings = 0
+        self.in_route = False               # 주차 통로에 들어섰다 (STOP/START 전까지 유지)
         self.events = []                    # (t, 문자열) 최근 이벤트
+
+    @property
+    def led(self):
+        return led_color(self.state, self.in_route, self.cfg.route_color)
 
     # ----- 외부 명령 -----
     def start(self, now=0.0):
-        if self.state in (IDLE, ESTOP, LOST):
+        if self.state in (IDLE, ESTOP, LOST, PARKED):
             self.pid.reset()
             self.t_seen = None
+            if self.state != LOST:
+                self.in_route = False
             self._go(LANE_FOLLOW, now, 'start')
 
     def stop(self, now=0.0):
         self._release()
+        self.in_route = False
         self._go(IDLE, now, 'stop')
 
     def estop(self, now=0.0):
@@ -119,11 +142,22 @@ class LaneController:
         dt = 0.0 if self.t_last is None else max(0.0, now - self.t_last)
         self.t_last = now
 
-        if self.state in (IDLE, ESTOP):
+        if self.state in (IDLE, ESTOP, PARKED):
             return Command(0.0, 0.0, self.state)
 
+        # ---- 주차 통로: 들어서면 기억하고, 칸 끝 벽이 park_stop_m 안에 오면 주차 완료 ----
+        if p.route_near and self.state != BLOCKED:
+            if not self.in_route:
+                self.events.append((now, 'route entered'))
+            self.in_route = True
+        if self.in_route and front_m is not None and front_m < cfg.park_stop_m:
+            self._release()
+            self._go(PARKED, now, f'front={front_m:.2f}')
+            return Command(0.0, 0.0, PARKED)
+        stop_m = cfg.park_stop_m if self.in_route else cfg.obstacle_stop_m
+
         # ---- 전방 장애물 (라이다 또는 yolo 'robot') : 어떤 주행 상태보다 우선 ----
-        blocked = front_m is not None and front_m < cfg.obstacle_stop_m
+        blocked = front_m is not None and front_m < stop_m
         if p.obstacle_y and p.obstacle_y >= cfg.robot_stop_row:
             blocked = True
         if self.state == BLOCKED:
@@ -178,8 +212,8 @@ class LaneController:
             else:
                 v_target = cfg.v_max
                 if front_m is not None and front_m < cfg.obstacle_slow_m:
-                    span = max(1e-3, cfg.obstacle_slow_m - cfg.obstacle_stop_m)
-                    v_target *= max(0.3, (front_m - cfg.obstacle_stop_m) / span)
+                    span = max(1e-3, cfg.obstacle_slow_m - stop_m)
+                    v_target *= max(0.3, (front_m - stop_m) / span)
                 v, w = self._steer(p, dt, v_target)
                 return Command(v, w, LANE_FOLLOW)
 
@@ -192,7 +226,7 @@ class LaneController:
             if not p.crosswalk and self.t_cw_seen is not None and now - self.t_cw_seen > 1.0:
                 self._release()
                 self._go(LANE_FOLLOW, now, 'crosswalk gone')
-            v, w = self._steer(p, dt, cfg.v_approach)
+            v, w = self._steer(p, dt, min(cfg.v_approach, cfg.v_max))
             return Command(v, w, self.state)
 
         if self.state == CROSSING:
@@ -203,7 +237,7 @@ class LaneController:
                 self.t_cross_done = now
                 self._release()
                 self._go(LANE_FOLLOW, now, f'crossed #{self.crossings}')
-            v, w = self._steer(p, dt, cfg.v_cross)
+            v, w = self._steer(p, dt, min(cfg.v_cross, cfg.v_max))
             return Command(v, w, self.state)
 
         return Command(0.0, 0.0, self.state)

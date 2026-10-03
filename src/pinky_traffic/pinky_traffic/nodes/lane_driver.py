@@ -26,6 +26,7 @@ from sensor_msgs.msg import CompressedImage, Image, LaserScan
 from std_msgs.msg import String
 
 from ..core.config import Config
+from ..core.controller import LED_RED, PARKED
 from ..core.driver import Driver
 
 
@@ -54,6 +55,7 @@ class LaneDriverNode(Node):
         self.declare_parameter('dashboard_url', '')
         self.declare_parameter('autostart', False)
         self.declare_parameter('image_timeout', 0.7)
+        self.declare_parameter('use_led', True)      # 로봇에서 ros2 run pinky_led led_server 가 떠 있어야 켜진다
         get = lambda name: self.get_parameter(name).value
 
         overrides = {k: get(k) for k in ('backend', 'weights', 'dashboard_url') if get(k)}
@@ -76,6 +78,14 @@ class LaneDriverNode(Node):
         if get('use_scan'):
             self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
         self.create_timer(0.1, self.watchdog)
+        self.led_client, self.led_now, self.led_warned = None, None, False
+        if get('use_led'):
+            try:
+                from pinky_interfaces.srv import SetLed   # 핑키 워크스페이스(~/pinky/install)에 있다
+                self.SetLed = SetLed
+                self.led_client = self.create_client(SetLed, 'set_led')
+            except ImportError:
+                self.get_logger().warn('pinky_interfaces 가 없어 LED 는 끈다 (source ~/pinky/install/setup.bash)')
         self.get_logger().info(f"lane_driver: robot={get('robot')} backend={self.cfg.backend} "
                                f"image={get('image_topic')} dashboard={self.cfg.dashboard_url if get('use_dashboard') else 'off'}")
 
@@ -97,6 +107,7 @@ class LaneDriverNode(Node):
         front = self.front if now - self.t_scan < 1.0 else None     # 오래된 라이다 값은 쓰지 않는다
         cmd = self.driver.process(frame, front, now)
         self.publish(cmd.v, cmd.w)
+        self.set_led(self.driver.controller.led)
         self.state_pub.publish(String(data=json.dumps(self.driver.state)))
         if self.debug_pub.get_subscription_count():
             ok, jpeg = cv2.imencode('.jpg', self.driver.debug)
@@ -110,15 +121,34 @@ class LaneDriverNode(Node):
         twist.linear.x, twist.angular.z = float(v), float(w)
         self.cmd_pub.publish(twist)
 
+    def set_led(self, color, wait=0.0):
+        """색이 바뀔 때만 /set_led 서비스를 부른다 (응답은 기다리지 않는다)."""
+        if self.led_client is None or tuple(color) == self.led_now:
+            return
+        if not self.led_client.service_is_ready():
+            if not self.led_warned:
+                self.led_warned = True
+                self.get_logger().warn('LED 서버(set_led)가 안 보인다. 로봇에서: ros2 run pinky_led led_server')
+            return
+        req = self.SetLed.Request()
+        req.command, (req.r, req.g, req.b) = 'fill', [int(c) for c in color]
+        future = self.led_client.call_async(req)
+        self.led_now = tuple(color)
+        if wait:
+            rclpy.spin_until_future_complete(self, future, timeout_sec=wait)
+
     def watchdog(self):
         if time.time() - self.t_image > self.image_timeout:
             self.publish(0.0, 0.0)
+            self.set_led(self.driver.controller.led if self.driver.controller.state == PARKED else LED_RED)
             self.driver.idle_report('no image')
 
     def shutdown(self):
         for _ in range(3):
             self.publish(0.0, 0.0)
             time.sleep(0.05)
+        if rclpy.ok():
+            self.set_led(LED_RED, wait=0.3)    # 꺼질 때는 '정지' 빨강
         self.driver.close()
 
 

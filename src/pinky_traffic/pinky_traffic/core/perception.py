@@ -30,6 +30,8 @@ class Perception:
     right_pts: List[Tuple[int, int]] = field(default_factory=list)
     size: Tuple[int, int] = (0, 0)   # (w, h)
     ms: float = 0.0                  # 처리 시간
+    route_seen: bool = False         # 주차 통로 색(빨강/파랑)이 보인다
+    route_near: bool = False         # 통로 색이 로봇 바로 앞까지 왔다 (= 통로에 들어섰다)
 
 
 class LaneMemory:
@@ -147,6 +149,8 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
         if area < min_area:
             continue
         comp = labels == i
+        if is_wall(comp[y:y + bh, x:x + bw], cfg, w, h):
+            continue
         touches_side = x <= 1 or x + bw >= w - 1
         # 차선: 화면 옆 가장자리에 닿거나, 키가 크면서 먼 곳(ROI 위쪽)까지 이어진다.
         # 횡단보도 줄무늬: 가까이 오면 키는 커지지만 먼 곳까지 이어지지는 않는다.
@@ -157,9 +161,31 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
             continue
         # 아래쪽 6행의 평균 x = 로봇 가까운 쪽 위치
         ys, xs = np.nonzero(comp[y + max(0, bh - 6): y + bh, x: x + bw])
+        if _is_u_shape(xs + x, comp[y + max(0, bh - 6): y + bh], ref):
+            # 양쪽 선이 앞에서 가로선으로 이어진 'U' (주차칸 끝): 가로선 행을 빼고 좌우로 나눈다
+            part = comp.copy()
+            part[comp[:, int(ref)]] = False
+            cols = np.arange(w)[None, :]
+            left[part & (cols < ref)] = 255
+            right[part & (cols >= ref)] = 255
+            continue
         xb = x + (xs.mean() if xs.size else bw / 2.0)
         (left if xb < ref else right)[comp] = 255
     return left, right, stripes, stripe_boxes
+
+
+def is_wall(box_mask, cfg, w, h):
+    """덩어리가 선이 아니라 넓은 면(흰 벽, 종이)인가: 영상 폭의 lane_wall_width 보다 넓은 행이 많다."""
+    wide_rows = int(np.count_nonzero(box_mask.sum(axis=1) > cfg.lane_wall_width * w))
+    return wide_rows >= cfg.lane_wall_rows * h
+
+
+def _is_u_shape(xs, bottom_rows, ref):
+    """아래쪽 행에서 기준선(ref) 양쪽에 따로 떨어진 픽셀이 있으면 두 선이 위에서 이어진 덩어리."""
+    c = int(ref)
+    if xs.size == 0 or not 0 <= c < bottom_rows.shape[1]:
+        return False
+    return xs.min() < ref - 2 and xs.max() > ref + 2 and not bottom_rows[:, max(0, c - 1):c + 2].any()
 
 
 def stripes_are_crosswalk(stripe_boxes, cfg, h):

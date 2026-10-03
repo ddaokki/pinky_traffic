@@ -10,6 +10,8 @@ DOMAIN="${2:?ROS_DOMAIN_ID (로봇과 같은 값)}"
 BACKEND="${3:-hsv}"
 WEIGHTS="${4:-$WS/models/best.pt}"
 source /opt/ros/jazzy/setup.bash
+# LED 서비스 정의(pinky_interfaces)는 핑키 워크스페이스에 있다
+[ -f "$HOME/pinky/install/setup.bash" ] && source "$HOME/pinky/install/setup.bash"
 source "$WS/install/setup.bash"
 export ROS_DOMAIN_ID="$DOMAIN"
 if [ "$BACKEND" = "yolo" ]; then

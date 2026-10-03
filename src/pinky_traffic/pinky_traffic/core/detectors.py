@@ -16,6 +16,7 @@ class HsvDetector:
         self.cfg = cfg
         self.memory = LaneMemory()
         self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        self.route_seen = self.route_near = False
 
     def color_mask(self, frame, lo, hi):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -23,10 +24,32 @@ class HsvDetector:
         mask[: int(self.cfg.roi_top * frame.shape[0])] = 0
         return cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)   # 오프닝 = 작은 잡음 제거
 
-    def masks(self, frame):
-        """처리 크기 frame -> {'left','right','crosswalk'} 마스크와 횡단보도 판정."""
+    def route_mask(self, frame):
+        """주차 통로 색 마스크 (route_color 가 없으면 None)."""
         cfg = self.cfg
+        if cfg.route_color == 'red':
+            return self.color_mask(frame, cfg.red_hsv_lo, cfg.red_hsv_hi) | \
+                   self.color_mask(frame, cfg.red2_hsv_lo, cfg.red2_hsv_hi)
+        if cfg.route_color == 'blue':
+            return self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
+        return None
+
+    def masks(self, frame):
+        """처리 크기 frame -> {'left','right','crosswalk'} 마스크와 횡단보도 판정, 통로 상태."""
+        cfg = self.cfg
+        h, w = frame.shape[:2]
         lane = self.color_mask(frame, cfg.lane_hsv_lo, cfg.lane_hsv_hi)
+        route = self.route_mask(frame)
+        self.route_seen = self.route_near = False
+        if route is not None and cv2.countNonZero(route) >= cfg.route_min_area * w * h:
+            self.route_seen = True
+            self.route_near = np.flatnonzero(route.any(axis=1)).max() >= cfg.route_only_row * (h - 1)
+        if self.route_near:
+            # 통로 안: 통로 색만 따라간다 (옆의 흰 벽·흰 차선을 무시). 통로에는 횡단보도가 없다.
+            left, right, _, _ = split_lane_mask(route, cfg, self.memory, separate_crosswalk=False)
+            return {'left': left, 'right': right, 'crosswalk': np.zeros_like(lane)}, False
+        if self.route_seen:
+            lane = lane | route       # 흰 선이 통로 색 선으로 이어지는 구간
         if cfg.crosswalk_hsv_lo is not None and cfg.crosswalk_hsv_hi is not None:
             crosswalk = self.color_mask(frame, cfg.crosswalk_hsv_lo, cfg.crosswalk_hsv_hi)
             lane = cv2.bitwise_and(lane, cv2.bitwise_not(crosswalk))
@@ -42,6 +65,7 @@ class HsvDetector:
         frame = resize_to(frame, self.cfg.proc_width)
         masks, found = self.masks(frame)
         p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
+        p.route_seen, p.route_near = self.route_seen, bool(self.route_near)
         p.ms = (time.perf_counter() - t0) * 1000
         return p, masks, frame
 

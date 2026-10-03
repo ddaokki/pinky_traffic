@@ -23,7 +23,7 @@ from ..core.coordinator import LockManager
 
 HERE = Path(__file__).parent
 CSV_FIELDS = ['t', 'robot', 'state', 'v', 'w', 'offset', 'heading', 'ok', 'left', 'right', 'crosswalk',
-              'crosswalk_y', 'front', 'fps', 'ms', 'backend']
+              'crosswalk_y', 'front', 'fps', 'ms', 'backend', 'route', 'led']
 
 
 class Hub:
