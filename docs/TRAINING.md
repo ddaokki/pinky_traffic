@@ -57,6 +57,8 @@ python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pink
     --compare models/best.pt --save out/cmp
 ```
 
+사진별 결과가 필요하면 `--csv out/cmp.csv` 를 붙인다 (어느 사진에서 차선을 놓쳤는지, 횡단보도를 잡았는지 한 줄씩).
+
 | 볼 것 | 기준 |
 |---|---|
 | 학습 로그 mask mAP50 | 0.9 이상 |
