@@ -1,0 +1,4 @@
+# 시뮬레이터 기본 코스용 (흰 차선 + 노란 횡단보도)
+backend: hsv
+crosswalk_hsv_lo: [20, 100, 120]
+crosswalk_hsv_hi: [35, 255, 255]

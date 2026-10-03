@@ -1,0 +1,32 @@
+# 현장(학원) 설정. 내일 테이프를 깔고 나서 '★' 표시된 값부터 맞춘다.
+# 여기 없는 값은 pinky_traffic/core/config.py 의 기본값을 쓴다.
+
+backend: hsv            # 학습 전: hsv  ->  best.pt 가 생기면: yolo
+weights: models/best.pt
+conf: 0.4
+imgsz: 320
+
+# ★ 차선 테이프 색 (hsv_tuner 로 찾는다). 아래는 흰 테이프 기준.
+lane_hsv_lo: [0, 0, 170]
+lane_hsv_hi: [179, 70, 255]
+# ★ 횡단보도를 차선과 다른 색 테이프로 깔았으면 주석을 풀고 값을 넣는다 (hsv 모드가 훨씬 안정적이 된다).
+#   같은 색이면 그대로 둔다 (모양으로 구분. yolo 모드에서는 이 값과 상관없이 구분한다).
+# crosswalk_hsv_lo: [20, 100, 120]
+# crosswalk_hsv_hi: [35, 255, 255]
+
+# 처음에는 느리게. 한 바퀴 돌면 0.02 씩 올린다.
+v_max: 0.08
+kp: 1.6
+kd: 0.25
+k_heading: 0.0
+
+crosswalk_stop_sec: 3.0
+crossing_sec: 5.0        # ★ 정지선에서 횡단보도를 완전히 지나가는 데 걸리는 시간보다 조금 길게
+crosswalk_stop_row: 0.80
+
+obstacle_stop_m: 0.22
+lidar_yaw_offset_deg: 0.0   # ★ 정면에 물체를 놓았는데 front 값이 안 줄면 180 으로
+
+# 2대 운용 (1대 시연이 끝난 뒤에)
+use_coordinator: false
+dashboard_url: http://127.0.0.1:8088

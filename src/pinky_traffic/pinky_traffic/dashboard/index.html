@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinky 교통 관제</title>
+<style>
+  :root { --bg:#11151a; --panel:#1b222b; --line:#2c3642; --text:#e6edf3; --dim:#8b98a8; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, "Noto Sans KR", sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:2; }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  button { background:#263041; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 14px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.go { background:#1f4d2b; } button.estop { background:#8e1c18; font-weight:700; padding:7px 22px; }
+  main { display:grid; grid-template-columns: minmax(0,1.5fr) minmax(0,1fr); gap:14px; padding:14px 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; min-width:0; }
+  .panel h2 { font-size:13px; margin:0 0 8px; color:var(--dim); font-weight:600; letter-spacing:.02em; }
+  #robots { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
+  .robot { border:1px solid var(--line); border-radius:8px; padding:10px; }
+  .robot.stale { opacity:.45; }
+  .robot .head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+  .robot .name { font-weight:700; font-size:15px; }
+  .badge { padding:2px 9px; border-radius:10px; font-size:12px; background:#30394a; white-space:nowrap; }
+  .badge.lane_follow, .badge.crossing { background:#1f4d2b; } .badge.stop_at_crosswalk, .badge.approach_crosswalk, .badge.blocked { background:#5a4410; }
+  .badge.lost, .badge.estop { background:#8e1c18; }
+  .robot img { width:100%; image-rendering:pixelated; background:#000; border-radius:4px; display:block; aspect-ratio:4/3; }
+  .kv { display:grid; grid-template-columns: repeat(4, 1fr); gap:4px 8px; margin:8px 0; font-variant-numeric:tabular-nums; }
+  .kv div span { display:block; color:var(--dim); font-size:11px; }
+  canvas { width:100%; height:60px; display:block; background:#141a21; border-radius:4px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .slider { display:grid; grid-template-columns: 150px 1fr 56px; gap:8px; align-items:center; margin:3px 0; }
+  .slider label { color:var(--dim); font-size:12px; overflow:hidden; text-overflow:ellipsis; }
+  .slider output { text-align:right; font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; }
+  #events { max-height:190px; overflow:auto; font-size:12px; font-family:ui-monospace, monospace; }
+  #events div { padding:1px 0; border-bottom:1px solid #222a34; }
+  #events time { color:var(--dim); margin-right:6px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  td, th { padding:5px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { color:var(--dim); font-weight:600; }
+  tr.group td { background:#222b36; font-weight:700; }
+  .res button { padding:2px 8px; font-size:12px; }
+  .res .pass.on { background:#1f6f35; } .res .fail.on { background:#a02822; }
+  td.note input { width:100%; background:#141a21; border:1px solid var(--line); color:var(--text); border-radius:4px; padding:3px 5px; font:inherit; }
+  .tcwrap { max-height:520px; overflow:auto; }
+  .muted { color:var(--dim); } .lock b { color:var(--warn); }
+  label.chk { display:flex; gap:6px; align-items:center; margin:6px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pinky 교통 관제</h1>
+  <button class="go" onclick="cmd('all','start')">▶ 전체 START</button>
+  <button onclick="cmd('all','stop')">■ 전체 STOP</button>
+  <button class="estop" onclick="cmd('all','estop')">비상정지 (전체)</button>
+  <span class="muted" id="summary"></span>
+</header>
+<main>
+  <div>
+    <div class="panel"><h2>로봇</h2><div id="robots"><span class="muted">아직 연결된 로봇이 없습니다. lane_driver 를 실행하세요.</span></div></div>
+    <div class="panel" style="margin-top:14px"><h2>테스트케이스 <span class="muted" id="tcsum"></span></h2><div class="tcwrap"><table id="tc"></table></div></div>
+  </div>
+  <div>
+    <div class="panel"><h2>구간 락 (2대 운용)</h2><div id="locks" class="lock muted">사용 안 함</div>
+      <label class="chk"><input type="checkbox" id="coord" onchange="setParam('use_coordinator', this.checked)"> 횡단보도 한 대씩 통과 (use_coordinator)</label></div>
+    <div class="panel" style="margin-top:14px"><h2>파라미터 (전 로봇에 즉시 적용)</h2><div id="sliders"></div></div>
+    <div class="panel" style="margin-top:14px"><h2>이벤트</h2><div id="events"></div><div class="muted" id="rundir" style="margin-top:6px;font-size:12px"></div></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let built = {sliders:false, tc:false}, cards = {}, dragging = false;
+
+async function post(path, body) {
+  await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+}
+function cmd(robot, c) { post('/api/cmd', {robot, cmd: c}); }
+function setParam(key, value) { post('/api/params', {[key]: value}); }
+
+function card(name) {
+  if (cards[name]) return cards[name];
+  if (!Object.keys(cards).length) $('robots').innerHTML = '';
+  const el = document.createElement('div');
+  el.className = 'robot';
+  el.innerHTML = `<div class="head"><span class="name"></span><span class="badge"></span></div>
+    <img alt="디버그 영상"><div class="kv"></div><canvas width="600" height="120"></canvas>
+    <div class="row"><button class="go">▶ START</button><button class="s">■ STOP</button><button class="estop">비상정지</button></div>`;
+  el.querySelector('.name').textContent = name;
+  el.querySelector('.go').onclick = () => cmd(name, 'start');
+  el.querySelector('.s').onclick = () => cmd(name, 'stop');
+  el.querySelector('.estop').onclick = () => cmd(name, 'estop');
+  $('robots').appendChild(el);
+  return cards[name] = el;
+}
+const f = (v, d=2) => (v === null || v === undefined || Number.isNaN(+v)) ? '–' : (+v).toFixed(d);
+
+function drawHistory(canvas, history) {
+  const c = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+  c.clearRect(0, 0, W, H);
+  c.strokeStyle = '#3a4656'; c.beginPath(); c.moveTo(0, H/2); c.lineTo(W, H/2); c.stroke();
+  if (history.length < 2) return;
+  const n = history.length;
+  c.strokeStyle = '#58a6ff'; c.lineWidth = 2; c.beginPath();
+  history.forEach((h, i) => { const x = i/(n-1)*W, y = H/2 - Math.max(-1, Math.min(1, h[1]))*H/2; i ? c.lineTo(x,y) : c.moveTo(x,y); });
+  c.stroke();
+  c.fillStyle = '#8b98a8'; c.font = '18px sans-serif'; c.fillText('offset (위=오른쪽 치우침)', 6, 20);
+}
+
+function render(s) {
+  const names = Object.keys(s.robots).sort();
+  $('summary').textContent = names.length ? `로봇 ${names.length}대` : '';
+  for (const name of names) {
+    const r = s.robots[name], st = r.state || {}, el = card(name);
+    el.classList.toggle('stale', r.age > 2);
+    const badge = el.querySelector('.badge');
+    badge.textContent = r.age > 2 ? `연결 끊김 ${f(r.age,0)}s` : (st.state || '?');
+    badge.className = 'badge ' + (st.state || '');
+    if (r.has_frame) el.querySelector('img').src = `/frame/${name}.jpg?t=${Date.now()}`;
+    el.querySelector('.kv').innerHTML = [
+      ['v m/s', f(st.v)], ['w rad/s', f(st.w)], ['offset', f(st.offset)], ['fps', f(st.fps,1)],
+      ['좌/우', (st.left?'●':'○') + ' ' + (st.right?'●':'○')], ['횡단보도', st.crosswalk ? '보임 ' + f(st.crosswalk_y) : '–'],
+      ['전방 m', f(st.front)], ['인식 ms', f(st.ms,0) + ' ' + (st.backend||'')],
+    ].map(([k,v]) => `<div><span>${k}</span>${v}</div>`).join('');
+    drawHistory(el.querySelector('canvas'), r.history || []);
+  }
+  const locks = Object.entries(s.locks);
+  $('locks').innerHTML = locks.length ? locks.map(([res, l]) =>
+    `${res}: 통과 중 <b>${l.holder || '없음'}</b> · 대기 ${l.queue.length ? l.queue.join(', ') : '없음'}`).join('<br>') : '요청 없음';
+  const current = {...s.defaults, ...s.params};
+  if (!dragging) $('coord').checked = !!current.use_coordinator;
+  if (!built.sliders) {
+    built.sliders = true;
+    $('sliders').innerHTML = s.tunable.map(([k, lo, hi, step]) =>
+      `<div class="slider"><label title="${k}">${k}</label><input type="range" id="p_${k}" min="${lo}" max="${hi}" step="${step}"><output id="o_${k}"></output></div>`).join('');
+    for (const [k] of s.tunable) {
+      const input = $('p_' + k);
+      input.oninput = () => { dragging = true; $('o_' + k).textContent = input.value; };
+      input.onchange = () => { dragging = false; setParam(k, parseFloat(input.value)); };
+    }
+  }
+  if (!dragging) for (const [k] of s.tunable) { $('p_' + k).value = current[k]; $('o_' + k).textContent = current[k]; }
+  $('events').innerHTML = s.events.slice().reverse().map(e => `<div><time>${e.t}</time>${e.text.replace(/</g,'&lt;')}</div>`).join('');
+  $('rundir').textContent = '로그 저장: ' + s.run_dir;
+  if (!built.tc && s.testcases.length) {
+    built.tc = true;
+    let html = '<tr><th>ID</th><th>항목 / 방법 / 통과 기준</th><th>결과</th><th>메모</th></tr>', group = '';
+    for (const t of s.testcases) {
+      if (t.group !== group) { group = t.group; html += `<tr class="group"><td colspan="4">${group}</td></tr>`; }
+      html += `<tr data-id="${t.id}"><td>${t.id}</td><td><b>${t.title}</b><br><span class="muted">${t.how}</span><br>✔ ${t.pass}</td>
+        <td class="res"><button class="pass">통과</button> <button class="fail">실패</button></td><td class="note"><input placeholder="메모"></td></tr>`;
+    }
+    $('tc').innerHTML = html;
+    for (const row of $('tc').querySelectorAll('tr[data-id]')) {
+      const id = row.dataset.id, note = row.querySelector('input');
+      const save = result => post('/api/testcase', {id, result, note: note.value});
+      row.querySelector('.pass').onclick = () => save('pass');
+      row.querySelector('.fail').onclick = () => save('fail');
+      note.onchange = () => save((s.results[id] || {}).result || '');
+    }
+  }
+  let pass = 0, fail = 0;
+  for (const row of $('tc').querySelectorAll('tr[data-id]')) {
+    const r = s.results[row.dataset.id] || {};
+    row.querySelector('.pass').classList.toggle('on', r.result === 'pass');
+    row.querySelector('.fail').classList.toggle('on', r.result === 'fail');
+    const note = row.querySelector('input');
+    if (document.activeElement !== note && r.note !== undefined) note.value = r.note;
+    pass += r.result === 'pass'; fail += r.result === 'fail';
+  }
+  $('tcsum').textContent = s.testcases.length ? `— 통과 ${pass} · 실패 ${fail} · 남음 ${s.testcases.length - pass - fail}` : '';
+}
+
+async function tick() {
+  try { render(await (await fetch('/api/state')).json()); $('summary').style.color = ''; }
+  catch (e) { $('summary').textContent = '서버 연결 끊김'; $('summary').style.color = '#f85149'; }
+  setTimeout(tick, 300);
+}
+document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); cmd('all', 'estop'); } });
+tick();
+</script>
+</body>
+</html>

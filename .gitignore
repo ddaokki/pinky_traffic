@@ -1,0 +1,10 @@
+build/
+install/
+log/
+runs/
+data/
+*.pt
+__pycache__/
+*.pyc
+.pytest_cache/
+*.mp4

@@ -1,0 +1,117 @@
+"""설정값 한 곳에 모으기.
+
+기본값은 여기, 현장 값은 config/*.yaml, 실행 중 변경은 대시보드 슬라이더(update()).
+"""
+from dataclasses import dataclass, field, fields, asdict
+from typing import List, Optional
+
+import yaml
+
+
+@dataclass
+class Config:
+    # ---------- 인식 (perception) ----------
+    backend: str = 'hsv'            # 'hsv' (학습 전/백업) | 'yolo' (best.pt)
+    weights: str = 'best.pt'        # yolo 가중치 경로
+    conf: float = 0.4               # yolo 신뢰도 임계값
+    imgsz: int = 320                # yolo 입력 크기
+    proc_width: int = 320           # 처리 전 이 폭으로 줄인다 (속도)
+
+    # HSV 범위 (OpenCV: H 0~179, S/V 0~255). 기본 = 흰색 테이프
+    lane_hsv_lo: List[int] = field(default_factory=lambda: [0, 0, 170])
+    lane_hsv_hi: List[int] = field(default_factory=lambda: [179, 70, 255])
+    # 횡단보도를 다른 색 테이프로 깔았을 때만 채운다. None 이면 '같은 색' 모드(모양으로 구분)
+    crosswalk_hsv_lo: Optional[List[int]] = None
+    crosswalk_hsv_hi: Optional[List[int]] = None
+
+    roi_top: float = 0.40           # 이 비율 위쪽(먼 곳/벽)은 버린다
+    near_row: float = 0.90          # 차선 중심을 재는 가장 가까운 행 (0=위, 1=아래)
+    far_row: float = 0.55           # 가장 먼 행
+    lookahead_row: float = 0.80     # 조향 기준 행 (클수록 가까운 곳을 본다)
+    n_rows: int = 8
+    lane_width_near: float = 1.30   # near_row 에서 차선폭 / 영상폭 (한쪽 선만 보일 때 추정용 초기값, 양쪽이 보이면 자동 학습)
+    lane_width_far: float = 0.45    # far_row 에서 차선폭 / 영상폭
+    min_area: float = 0.0015        # 덩어리 최소 면적 / 영상 면적
+    lane_min_height: float = 0.16   # 차선으로 볼 덩어리의 최소 높이 / 영상 높이 (같은 색 모드)
+    crosswalk_min_stripes: int = 3  # 같은 색 모드: 줄무늬가 이 개수 이상이면 횡단보도
+    crosswalk_min_area: float = 0.004
+    crosswalk_stop_row: float = 0.80  # 횡단보도 아래 끝이 이 행까지 내려오면 정지
+
+    # ---------- 제어 (control) ----------
+    v_max: float = 0.10             # m/s
+    v_min: float = 0.04
+    v_approach: float = 0.05        # 횡단보도 접근 속도
+    v_cross: float = 0.07           # 횡단보도 통과 속도
+    kp: float = 1.6                 # offset -> 각속도
+    ki: float = 0.0
+    kd: float = 0.25
+    k_heading: float = 0.0          # 먼 행과 가까운 행의 차이(곡률) 보정. 시뮬에서는 0 이 가장 정확했다
+    w_max: float = 1.4              # rad/s
+    slow_gain: float = 0.7          # offset 클수록 감속
+    crosswalk_stop_sec: float = 3.0
+    crossing_sec: float = 5.0       # 정지 후 횡단보도를 무시하고 지나가는 시간
+    crosswalk_cooldown_sec: float = 3.0
+    lost_grace_sec: float = 0.4     # 이 시간까지는 직전 조향 유지
+    lost_timeout_sec: float = 1.5   # 이후 정지
+    obstacle_stop_m: float = 0.22   # 전방 이 거리 안에 뭔가 있으면 정지
+    obstacle_slow_m: float = 0.45
+    front_angle_deg: float = 25.0   # 라이다 전방 부채꼴 반각
+    lidar_yaw_offset_deg: float = 0.0  # 라이다 0도가 정면이 아니면 보정
+    robot_stop_row: float = 0.80    # yolo 'robot' 박스 아래끝이 이 행을 넘으면 장애물로 본다
+
+    # ---------- 2대 운용 (coordinator) ----------
+    use_coordinator: bool = False   # True: 횡단보도 구간을 대시보드 서버의 락으로 한 대씩만 통과
+    resource: str = 'crosswalk'
+    dashboard_url: str = 'http://127.0.0.1:8088'
+
+    def update(self, values: dict):
+        """알고 있는 키만 형변환해서 반영. 반영된 키 목록을 돌려준다."""
+        changed = []
+        known = {f.name: f for f in fields(self)}
+        for key, value in (values or {}).items():
+            if key not in known:
+                continue
+            current = getattr(self, key)
+            try:
+                if isinstance(current, bool):
+                    value = value if isinstance(value, bool) else str(value).lower() in ('1', 'true', 'yes', 'on')
+                elif isinstance(current, int):
+                    value = int(value)
+                elif isinstance(current, float):
+                    value = float(value)
+                elif isinstance(current, list) and value is not None:
+                    value = [int(v) for v in value]
+            except (TypeError, ValueError):
+                continue
+            if value != current:
+                setattr(self, key, value)
+                changed.append(key)
+        return changed
+
+    def to_dict(self):
+        return asdict(self)
+
+    @classmethod
+    def load(cls, path=None, **overrides):
+        cfg = cls()
+        if path:
+            with open(path, encoding='utf-8') as f:
+                cfg.update(yaml.safe_load(f) or {})
+        cfg.update(overrides)
+        return cfg
+
+
+# 대시보드 슬라이더로 노출할 값: (키, 최소, 최대, 간격)
+TUNABLE = [
+    ('v_max', 0.03, 0.25, 0.01),
+    ('kp', 0.2, 4.0, 0.1),
+    ('kd', 0.0, 1.5, 0.05),
+    ('k_heading', 0.0, 3.0, 0.1),
+    ('slow_gain', 0.0, 1.0, 0.05),
+    ('lookahead_row', 0.50, 0.90, 0.01),
+    ('crosswalk_stop_row', 0.55, 0.95, 0.01),
+    ('crosswalk_stop_sec', 0.0, 10.0, 0.5),
+    ('crossing_sec', 1.0, 12.0, 0.5),
+    ('obstacle_stop_m', 0.10, 0.60, 0.01),
+    ('conf', 0.1, 0.9, 0.05),
+]
