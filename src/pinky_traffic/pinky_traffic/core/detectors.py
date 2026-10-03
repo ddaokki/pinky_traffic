@@ -36,7 +36,9 @@ class HsvDetector:
             return None
         # 선처럼 세로로 긴 덩어리만 남긴다
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-        keep = np.flatnonzero(stats[:, cv2.CC_STAT_HEIGHT] >= cfg.route_min_height * frame.shape[0])
+        h = frame.shape[0]
+        keep = np.flatnonzero((stats[:, cv2.CC_STAT_HEIGHT] >= cfg.route_min_height * h) &
+                              (stats[:, cv2.CC_STAT_TOP] <= cfg.route_max_top * h))
         keep = keep[keep > 0]
         return np.where(np.isin(labels, keep), 255, 0).astype(np.uint8)
 

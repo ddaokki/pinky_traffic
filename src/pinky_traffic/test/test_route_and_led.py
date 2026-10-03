@@ -135,3 +135,11 @@ def test_reddish_carpet_at_bottom_corner_is_not_route():
     cv2.rectangle(img, (274, 224), (319, 239), (30, 30, 70), -1)
     p, _, _ = HsvDetector(Config(route_color='red')).detect(img)
     assert not p.route_seen and not p.route_near and p.ok
+
+
+def test_dark_red_blob_in_bottom_corner_is_not_route():
+    # 현장 기록 24장: 화면 아래 구석(위쪽 끝 0.8h 이하, 높이 29~49 px)에 붉은 얼룩
+    img = lines(floor(), WHITE)
+    cv2.rectangle(img, (0, 191), (48, 239), (35, 35, 65), -1)
+    p, _, _ = HsvDetector(Config(route_color='red')).detect(img)
+    assert not p.route_seen and p.ok
