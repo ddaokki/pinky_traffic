@@ -25,7 +25,7 @@ crossing_sec: 5.0        # ★ 정지선에서 횡단보도를 완전히 지나�
 crosswalk_stop_row: 0.80
 
 obstacle_stop_m: 0.22
-lidar_yaw_offset_deg: 0.0   # ★ 정면에 물체를 놓았는데 front 값이 안 줄면 180 으로
+lidar_yaw_offset_deg: 180.0 # ★ 2026-10-03 현장: pinky1 라이다 0도가 뒤쪽이라 180
 
 # 2대 운용 (1대 시연이 끝난 뒤에)
 use_coordinator: false
