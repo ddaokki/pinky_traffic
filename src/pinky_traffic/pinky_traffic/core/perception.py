@@ -177,7 +177,7 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
         if area < min_area:
             continue
         comp = labels == i
-        if is_wall(comp[y:y + bh, x:x + bw], cfg, w, h):
+        if is_wall(comp[y:y + bh, x:x + bw], cfg, w, h, top=y):
             continue
         touches_side = x <= 1 or x + bw >= w - 1
         # 차선: 화면 옆 가장자리에 닿거나, 키가 크면서 먼 곳(ROI 위쪽)까지 이어진다.
@@ -202,8 +202,14 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
     return left, right, stripes, stripe_boxes
 
 
-def is_wall(box_mask, cfg, w, h):
-    """덩어리가 선이 아니라 넓은 면(옆에 붙은 흰 벽, 종이)인가: lane_wall_width 보다 넓은 행이 많다."""
+def is_wall(box_mask, cfg, w, h, top=0):
+    """덩어리가 선이 아니라 넓은 면(옆에 붙은 흰 벽, 종이)인가: lane_wall_width 보다 넓은 행이 많다.
+
+    벽은 화면 위쪽(ROI 위 경계)에서 내려온다. 위 경계에 닿지 않은 넓은 띠는 코너에서 발 앞을 가로지르는
+    차선이다 (2026-10-04: 돌아오는 길 코너에서 가까운 가로선을 벽으로 지워 차선을 놓쳤다).
+    """
+    if top > (cfg.roi_top + 0.05) * h:
+        return False
     wide_rows = int(np.count_nonzero(box_mask.sum(axis=1) > cfg.lane_wall_width * w))
     return wide_rows >= cfg.lane_wall_rows * h
 

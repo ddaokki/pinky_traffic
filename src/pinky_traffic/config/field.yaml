@@ -20,7 +20,7 @@ kp: 1.6
 kd: 0.25
 k_heading: 0.0
 
-crosswalk_stop_sec: 5.0     # 2026-10-03: 횡단보도에서 5초 정지 후 계속 주행
+crosswalk_stop_sec: 3.0     # 2026-10-04: 5초는 길어서 3초로
 crossing_sec: 5.0        # ★ 정지선에서 횡단보도를 완전히 지나가는 데 걸리는 시간보다 조금 길게
 crosswalk_stop_row: 0.80
 
