@@ -369,7 +369,7 @@ class LaneController:
             if p.crosswalk and cooled and p.crosswalk_y < cfg.crosswalk_stop_row - 0.12:
                 self._go(APPROACH, now, f'crosswalk y={p.crosswalk_y:.2f}')
             else:
-                v_target = cfg.v_max
+                v_target = cfg.v_min if self.follow_blue else cfg.v_max     # 파란 선 위에서는 천천히
                 if front_m is not None and front_m < cfg.obstacle_slow_m:
                     span = max(1e-3, cfg.obstacle_slow_m - stop_m)
                     v_target *= max(0.3, (front_m - stop_m) / span)

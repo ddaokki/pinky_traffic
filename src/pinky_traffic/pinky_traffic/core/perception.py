@@ -145,19 +145,22 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
 
 
 def center_line_perception(mask, cfg):
-    """선 하나(파란 유턴 선)를 화면 가운데에 두고 따라가기: 행마다 선의 가운데 x 를 목표로 삼는다."""
+    """선 하나(파란 유턴 선)를 로봇 바로 밑 가운데에 두고 따라가기.
+
+    보이는 선 중 가장 가까운(화면 아래) 부분의 가운데 x 를 목표로 삼는다. 먼 곳을 보고 미리 꺾으면
+    직각으로 꺾이는 곳을 가로질러 선을 놓친다 (2026-10-04).
+    """
     h, w = mask.shape[:2]
     p = Perception(size=(w, h))
     half = w / 2.0
     pts = []
-    for frac in np.linspace(cfg.near_row, cfg.far_row, cfg.n_rows):
+    for frac in np.linspace(0.97, cfg.far_row, cfg.n_rows + 2):
         y = int(frac * (h - 1))
         cols = np.flatnonzero(mask[max(0, y - 2):y + 3].any(axis=0))
         if cols.size:
             pts.append((float(cols.mean()), y))
     if pts:
-        look_y = cfg.lookahead_row * (h - 1)
-        tx, ty = min(pts, key=lambda q: abs(q[1] - look_y))
+        tx, ty = pts[0]                       # 가장 아래(가까운) 점
         p.ok = True
         p.offset = float(np.clip((tx - half) / half, -1.5, 1.5))
         p.heading = float(np.clip((pts[-1][0] - pts[0][0]) / half, -1.5, 1.5))
