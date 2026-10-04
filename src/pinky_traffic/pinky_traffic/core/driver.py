@@ -77,7 +77,8 @@ class Driver:
                  'front': None if front_m is None else round(front_m, 2), 'fps': round(self.fps, 1),
                  'ms': round(p.ms, 1), 'backend': self.cfg.backend, 'reason': cmd.reason,
                  'crossings': self.controller.crossings,
-                 'route': self.controller.in_route, 'route_seen': p.route_seen, 'led': list(self.controller.led)}
+                 'route': self.controller.in_route, 'route_seen': p.route_seen,
+                 'route_end_y': round(p.route_end_y, 2), 'led': list(self.controller.led)}
         text = f'{self.name} {cmd.state} v={cmd.v:.2f} w={cmd.w:+.2f}'
         self.debug = draw_debug(small, p, masks, text)
         if self.link:

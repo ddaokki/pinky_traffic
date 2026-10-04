@@ -5,6 +5,7 @@ ROS 를 모른다. step(인식결과, 전방거리, 현재시각) -> (v, w) 만 
 
 부호: offset > 0 (차선 중심이 오른쪽) -> 오른쪽으로 돌아야 함 -> angular.z < 0
 """
+import math
 from dataclasses import dataclass
 
 from .perception import Perception
@@ -17,6 +18,7 @@ CROSSING = 'crossing'
 BLOCKED = 'blocked'
 LOST = 'lost'
 ESTOP = 'estop'
+PARK_TURN = 'park_turn'            # 칸 끝에서 제자리 회전 (나갈 방향으로 돌아선다)
 PARKED = 'parked'
 
 # LED (r, g, b): 달리는 중 초록, 서 있으면 빨강, 주차 통로 안에서는 통로 색, 주차 완료 초록
@@ -91,6 +93,7 @@ class LaneController:
         self.last_w = 0.0
         self.crossings = 0
         self.in_route = False               # 주차 통로에 들어섰다 (STOP/START 전까지 유지)
+        self.end_hits = 0                   # 칸 끝 선이 정지 행까지 온 연속 프레임 수
         self.events = []                    # (t, 문자열) 최근 이벤트
 
     @property
@@ -144,16 +147,27 @@ class LaneController:
 
         if self.state in (IDLE, ESTOP, PARKED):
             return Command(0.0, 0.0, self.state)
+        if self.state == PARK_TURN:
+            # 각도 센서 없이 시간으로 돈다: 각도 / 회전 속도
+            if now - self.t_state >= math.radians(cfg.park_turn_deg) / max(0.1, cfg.park_turn_w):
+                self._go(PARKED, now, 'turned')
+                return Command(0.0, 0.0, PARKED)
+            return Command(0.0, cfg.park_turn_w, PARK_TURN)
 
         # ---- 주차 통로: 들어서면 기억하고, 칸 끝 벽이 park_stop_m 안에 오면 주차 완료 ----
         if p.route_near and self.state != BLOCKED:
             if not self.in_route:
                 self.events.append((now, 'route entered'))
             self.in_route = True
-        if self.in_route and front_m is not None and front_m < cfg.park_stop_m:
+        # 끝 선이 park_line_row 까지 내려왔거나(2프레임 연속), 선을 못 봤어도 벽이 park_stop_m 안이면 주차
+        at_line = self.in_route and p.route_end and p.route_end_y >= cfg.park_line_row
+        self.end_hits = self.end_hits + 1 if at_line else 0
+        at_wall = self.in_route and front_m is not None and front_m < cfg.park_stop_m
+        if self.end_hits >= 2 or at_wall:
             self._release()
-            self._go(PARKED, now, f'front={front_m:.2f}')
-            return Command(0.0, 0.0, PARKED)
+            reason = f'front={front_m:.2f}' if at_wall else f'end line y={p.route_end_y:.2f}'
+            self._go(PARK_TURN if cfg.park_turn_deg > 0 else PARKED, now, reason)
+            return Command(0.0, 0.0, self.state)
         stop_m = cfg.park_stop_m if self.in_route else cfg.obstacle_stop_m
 
         # ---- 전방 장애물 (라이다 또는 yolo 'robot') : 어떤 주행 상태보다 우선 ----

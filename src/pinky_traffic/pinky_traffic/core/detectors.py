@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from .perception import (LaneMemory, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
-                         remove_wall_base)
+                         remove_wall_base, route_end_bar)
 
 
 class HsvDetector:
@@ -18,6 +18,7 @@ class HsvDetector:
         self.memory = LaneMemory()
         self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         self.route_seen = self.route_near = False
+        self.route_end_y = 0.0
 
     def color_mask(self, frame, lo, hi):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -55,9 +56,14 @@ class HsvDetector:
         lane = remove_wall_base(self.color_mask(frame, lane_lo, cfg.lane_hsv_hi), cfg)
         route = self.route_mask(frame)
         self.route_seen = self.route_near = False
+        self.route_end_y = 0.0
         if route is not None and cv2.countNonZero(route) >= cfg.route_min_area * w * h:
             self.route_seen = True
             self.route_near = np.flatnonzero(route.any(axis=1)).max() >= cfg.route_only_row * (h - 1)
+            bar, self.route_end_y = route_end_bar(route, cfg, self.memory.center_near)
+            if bar is not None:
+                # 끝 선은 따라갈 선이 아니다. 빼 두어야 양쪽 선이 한 덩어리로 붙지 않는다
+                route = route & ~cv2.dilate(bar, self.kernel)
         if self.route_near:
             # 통로 안: 통로 색만 따라간다 (옆의 흰 벽·흰 차선을 무시). 통로에는 횡단보도가 없다.
             left, right, _, _ = split_lane_mask(route, cfg, self.memory, separate_crosswalk=False)
@@ -80,6 +86,7 @@ class HsvDetector:
         masks, found = self.masks(frame)
         p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
         p.route_seen, p.route_near = self.route_seen, bool(self.route_near)
+        p.route_end, p.route_end_y = self.route_end_y > 0, self.route_end_y
         p.ms = (time.perf_counter() - t0) * 1000
         return p, masks, frame
 

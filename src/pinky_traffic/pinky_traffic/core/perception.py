@@ -32,6 +32,8 @@ class Perception:
     ms: float = 0.0                  # 처리 시간
     route_seen: bool = False         # 주차 통로 색(빨강/파랑)이 보인다
     route_near: bool = False         # 통로 색이 로봇 바로 앞까지 왔다 (= 통로에 들어섰다)
+    route_end: bool = False          # 칸 끝을 가로지르는 통로 색 선이 보인다
+    route_end_y: float = 0.0         # 그 선의 아래 끝 행 / 높이 (클수록 가깝다)
 
 
 class LaneMemory:
@@ -191,6 +193,39 @@ def remove_wall_base(mask, cfg):
     return mask
 
 
+_BAR_KERNELS = {}
+
+
+def route_end_bar(route, cfg, ref=None):
+    """통로 마스크에서 길을 가로지르는 선(칸 끝 선)만 골라낸다 -> (마스크, 아래 끝 행/높이). 없으면 (None, 0.0).
+
+    차선은 화면에서 세로에 가깝고 끝 선은 가로에 가깝다. 가로 ±24도 방향의 긴 선분으로 오프닝하면
+    그 방향으로 길게 이어진 부분만 남는다 (로봇이 비스듬히 들어와 선이 기울어 보여도 잡힌다).
+    길 중심(ref)의 양쪽에 걸쳐 있어야 한다 (한쪽 차선이 휘어 보이는 것과 구분).
+    """
+    h, w = route.shape[:2]
+    k = max(9, int(cfg.route_end_width * w)) | 1
+    if k not in _BAR_KERNELS:
+        kernels = []
+        for deg in (-24, -16, -8, 0, 8, 16, 24):
+            kern = np.zeros((k, k), np.uint8)
+            dx, dy = np.cos(np.radians(deg)) * k / 2, np.sin(np.radians(deg)) * k / 2
+            c = k // 2
+            cv2.line(kern, (int(round(c - dx)), int(round(c - dy))), (int(round(c + dx)), int(round(c + dy))), 1, 1)
+            kernels.append(kern)
+        _BAR_KERNELS[k] = kernels
+    bar = np.zeros_like(route)
+    for kern in _BAR_KERNELS[k]:
+        bar |= cv2.morphologyEx(route, cv2.MORPH_OPEN, kern)
+    cols = np.flatnonzero(bar.any(axis=0))
+    ref = w / 2.0 if ref is None else ref
+    margin = 0.05 * w
+    if cols.size == 0 or cols.min() > ref - margin or cols.max() < ref + margin:
+        return None, 0.0
+    bar = cv2.dilate(bar, np.ones((11, 11), np.uint8)) & route    # 오프닝으로 깎인 가장자리·끝을 되살린다
+    return bar, float(np.flatnonzero(bar.any(axis=1)).max() / (h - 1))
+
+
 def _is_u_shape(xs, bottom_rows, ref):
     """아래쪽 행에서 기준선(ref) 양쪽에 따로 떨어진 픽셀이 있으면 두 선이 위에서 이어진 덩어리."""
     c = int(ref)
@@ -234,6 +269,9 @@ def draw_debug(frame, p: Perception, masks=None, text=None):
     if p.crosswalk:
         y = int(p.crosswalk_y * (h - 1))
         cv2.line(out, (0, y), (w - 1, y), (0, 255, 255), 1)
+    if p.route_end:
+        y = int(p.route_end_y * (h - 1))
+        cv2.line(out, (0, y), (w - 1, y), (255, 0, 255), 1)
     if text:
         cv2.rectangle(out, (0, 0), (w, 14), (0, 0, 0), -1)
         cv2.putText(out, text, (3, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.33, (255, 255, 255), 1, cv2.LINE_AA)

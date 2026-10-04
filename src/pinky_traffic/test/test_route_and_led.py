@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 from pinky_traffic.core.config import Config
-from pinky_traffic.core.controller import (LaneController, LANE_FOLLOW, PARKED, BLOCKED, STOP, IDLE,
+from pinky_traffic.core.controller import (LaneController, LANE_FOLLOW, PARKED, PARK_TURN, BLOCKED, STOP, IDLE,
                                             led_color, LED_GREEN, LED_RED, LED_BLUE)
 from pinky_traffic.core.detectors import HsvDetector
 from pinky_traffic.core.perception import Perception
@@ -95,7 +95,7 @@ def started(**cfg):
 
 
 def test_parks_at_bay_end_and_stays():
-    c = started(route_color='red', park_stop_m=0.15, obstacle_stop_m=0.22)
+    c = started(route_color='red', park_stop_m=0.15, obstacle_stop_m=0.22, park_turn_deg=0.0)
     assert c.step(lane(True), 0.50, 0.1).state == LANE_FOLLOW and c.in_route
     assert c.step(lane(True), 0.18, 0.2).state == LANE_FOLLOW       # 통로 안에서는 0.22 에서 안 선다
     cmd = c.step(lane(True), 0.14, 0.3)
@@ -152,3 +152,63 @@ def test_wall_base_strip_in_front_is_not_a_lane():
     p, _, _ = HsvDetector(Config()).detect(img)
     clean, _, _ = HsvDetector(Config()).detect(lines(floor(), WHITE))
     assert p.ok and abs(p.offset - clean.offset) < 0.1
+
+
+def bay_end(bar_y, tilt=0, color=BLUE):
+    """파란 두 선 + 칸 끝을 가로지르는 선 (bar_y 행, tilt 픽셀만큼 기울임)."""
+    img = lines(floor(), color)
+    cv2.line(img, (40, bar_y - tilt), (280, bar_y + tilt), color, 10)
+    img[:bar_y - abs(tilt) - 6] = CARPET          # 끝 선 너머에는 통로가 없다
+    return img
+
+
+def test_end_line_across_bay_is_seen_and_lines_still_followed():
+    for tilt in (0, 25, -25):
+        det = HsvDetector(Config(route_color='blue'))
+        det.detect(lines(floor(), BLUE))              # 끝 선이 보이기 전에 통로를 따라오며 차선 폭을 익힌 상태
+        p, _, _ = det.detect(bay_end(170, tilt))
+        assert p.route_end and 0.65 < p.route_end_y < 0.90, tilt
+        assert p.ok and p.left_seen and p.right_seen and abs(p.offset) < 0.25, tilt
+
+
+def test_plain_route_lines_have_no_end_line():
+    p, _, _ = HsvDetector(Config(route_color='blue')).detect(lines(floor(), BLUE))
+    assert p.route_near and not p.route_end
+    # 통로가 비스듬히 꺾여 보여도(선이 45도) 끝 선으로 보지 않는다
+    p, _, _ = HsvDetector(Config(route_color='blue')).detect(lines(floor(), BLUE, near=(20, 200), far=(160, 310)))
+    assert not p.route_end
+
+
+def end_line(y):
+    p = lane(True)
+    p.route_end, p.route_end_y = True, y
+    return p
+
+
+def test_stops_at_end_line_turns_around_then_parked():
+    c = started(route_color='blue', park_line_row=0.80, park_turn_deg=180.0, park_turn_w=0.8)
+    assert c.step(end_line(0.60), 0.50, 0.1).state == LANE_FOLLOW       # 아직 멀다
+    assert c.step(end_line(0.82), 0.40, 0.2).state == LANE_FOLLOW       # 한 프레임만으로는 안 선다
+    cmd = c.step(end_line(0.84), 0.40, 0.3)
+    assert cmd.state == PARK_TURN and cmd.v == 0
+    cmd = c.step(lane(False), 0.10, 2.0)                                # 도는 중: 벽이 가까워도 계속 돈다
+    assert cmd.state == PARK_TURN and cmd.v == 0 and cmd.w == 0.8
+    cmd = c.step(lane(False), 1.0, 0.3 + 3.14159 / 0.8 + 0.1)
+    assert cmd.state == PARKED and cmd.v == 0 and cmd.w == 0
+    assert c.step(lane(True), 1.0, 9.0).state == PARKED
+
+
+def test_end_line_outside_route_is_ignored():
+    c = started(route_color='blue')
+    p = lane(False)
+    p.route_end, p.route_end_y = True, 0.9
+    for i in range(3):
+        assert c.step(p, 1.0, 0.1 * (i + 1)).state == LANE_FOLLOW
+
+
+def test_wall_fallback_also_turns_around():
+    c = started(route_color='blue', park_stop_m=0.15)
+    c.step(lane(True), 0.50, 0.1)
+    assert c.step(lane(True), 0.14, 0.2).state == PARK_TURN
+    c.estop(0.3)
+    assert c.step(lane(True), 0.14, 0.4).v == 0 and c.state != PARK_TURN

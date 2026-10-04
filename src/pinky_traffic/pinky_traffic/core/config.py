@@ -78,7 +78,12 @@ class Config:
     route_max_top: float = 0.75      # 통로 색 덩어리의 위쪽 끝이 이 행보다 위(먼 곳)까지 올라와야 한다
                                      # (2026-10-03: 화면 아래 구석 0.8~1.0 행에 붉은 얼룩이 계속 생겼다)
     route_only_row: float = 0.75     # 통로 색이 이 행보다 가까이 오면 흰색은 버리고 통로 색만 따라간다 (흰 벽 회피)
-    park_stop_m: float = 0.15        # 통로 안에서 라이다 전방 거리가 이보다 가까우면 주차 완료
+    park_stop_m: float = 0.15        # 통로 안에서 라이다 전방 거리가 이보다 가까우면 주차 (끝 선을 못 봤을 때 대비)
+    # 칸 끝을 가로지르는 통로 색 선(끝 선): 이 선이 park_line_row 까지 내려오면 멈추고 제자리에서 돌아 나갈 방향으로 선다
+    route_end_width: float = 0.20    # 가로(±24도)로 영상 폭의 이 비율 이상 이어진 통로 색이면 끝 선
+    park_line_row: float = 0.80      # 끝 선의 아래 끝이 이 행까지 오면 정지 (클수록 선에 더 가까이 가서 선다)
+    park_turn_deg: float = 180.0     # 정지 후 제자리 회전 각도. 0 이면 돌지 않고 바로 주차 완료
+    park_turn_w: float = 0.8         # 회전 속도 rad/s. 시간으로 도는 것이라 덜/더 돌면 park_turn_deg 를 조절
     # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)
     lane_wall_width: float = 0.30
     lane_wall_rows: float = 0.12
@@ -139,5 +144,7 @@ TUNABLE = [
     ('crossing_sec', 1.0, 12.0, 0.5),
     ('obstacle_stop_m', 0.10, 0.60, 0.01),
     ('park_stop_m', 0.05, 0.40, 0.01),
+    ('park_line_row', 0.55, 0.95, 0.01),
+    ('park_turn_deg', 0.0, 360.0, 5.0),
     ('conf', 0.1, 0.9, 0.05),
 ]
