@@ -94,6 +94,11 @@ class Config:
     lane_auto_v: bool = True
     lane_v_margin: int = 60
     lane_v_min: int = 110
+    # 그늘 속 차선: 벽 그늘에서는 테이프 밝기가 140 쯤이라 위 기준에 못 미친다 (2026-10-04 출발점 오른쪽 선).
+    # 주변 바닥보다 lane_local_margin 이상 밝은 '가는 띠'(폭이 영상의 lane_local_k 보다 좁은 것)도 차선으로 본다.
+    # 넓은 흰 벽은 가는 띠가 아니라서 여기에 안 걸린다. 0 이면 끈다.
+    lane_local_margin: int = 45
+    lane_local_k: float = 0.16
 
     def update(self, values: dict):
         """알고 있는 키만 형변환해서 반영. 반영된 키 목록을 돌려준다."""

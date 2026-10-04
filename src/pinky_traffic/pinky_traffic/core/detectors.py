@@ -26,6 +26,20 @@ class HsvDetector:
         mask[: int(self.cfg.roi_top * frame.shape[0])] = 0
         return cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)   # 오프닝 = 작은 잡음 제거
 
+    def local_bright_mask(self, frame):
+        """주변보다 밝은 가는 띠 (그늘 속 흰 테이프). 원본 - 오프닝(가는 밝은 것을 지운 배경) 이 크면 띠."""
+        cfg = self.cfg
+        h, w = frame.shape[:2]
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        v = hsv[..., 2]
+        k = int(cfg.lane_local_k * w) | 1
+        # 배경은 흐리게 한 그림에서 구한다 (카펫 무늬의 반짝이는 점 때문). 비교는 원본 밝기로 해야 선이 번지지 않는다
+        back = cv2.morphologyEx(cv2.blur(v, (5, 5)), cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
+        mask = ((cv2.subtract(v, back) >= cfg.lane_local_margin) & (v >= cfg.lane_v_min) &
+                (hsv[..., 1] <= cfg.lane_hsv_hi[1])).astype(np.uint8) * 255
+        mask[: int(cfg.roi_top * h)] = 0
+        return cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
+
     def route_mask(self, frame):
         """주차 통로 색 마스크 (route_color 가 없으면 None)."""
         cfg = self.cfg
@@ -53,7 +67,10 @@ class HsvDetector:
             floor_v = float(np.median(cv2.cvtColor(frame[int(0.6 * h):], cv2.COLOR_BGR2HSV)[..., 2]))
             lane_lo[2] = int(min(lane_lo[2], max(cfg.lane_v_min, floor_v + cfg.lane_v_margin)))
         self.lane_v = lane_lo[2]
-        lane = remove_wall_base(self.color_mask(frame, lane_lo, cfg.lane_hsv_hi), cfg)
+        lane = self.color_mask(frame, lane_lo, cfg.lane_hsv_hi)
+        if cfg.lane_local_margin > 0:
+            lane |= self.local_bright_mask(frame)
+        lane = remove_wall_base(lane, cfg)
         route = self.route_mask(frame)
         self.route_seen = self.route_near = False
         self.route_end_y = 0.0
