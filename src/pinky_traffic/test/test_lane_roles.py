@@ -229,3 +229,16 @@ def test_in_pocket_robot_heads_for_the_green_line():
     det.follow_zone = True
     p, _, _ = det.detect(img)
     assert p.ok and p.zone_seen and 0.2 < p.offset < 0.5
+
+
+def test_lane2_goes_straight_until_green_then_gives_up_if_never_found():
+    c = started(lane_role=2, v_min=0.04, pocket_advance_m=0.04, park_turn_w=0.8, pocket_blind_sec=4.0, pocket_giveup_sec=15.0)
+    c.step(see(), 1.0, 0.1)
+    cmd, t = run(c, see(uturn_seen=True, uturn_near=True), 0.1, 1.5)
+    cmd, t = run(c, see(offset=-1.2), t, t + 2.5)                         # 우회전 끝. 흰 선은 왼쪽으로 가라지만
+    assert cmd.state == LANE_FOLLOW and cmd.w == 0 and cmd.v == 0.04       # 초록이 보일 때까지 곧장 간다
+    cmd, t = run(c, see(offset=0.3, zone_seen=True, zone_y=0.5), t, t + 0.3)
+    assert cmd.w < 0                                                       # 초록이 보이면 그쪽으로
+    cmd, t = run(c, see(), t, t + 16.0)
+    assert not c.pocket_mode and not c.junction_held                       # 끝내 못 찾으면 포기
+    assert c.step(see(crosswalk=True, crosswalk_y=0.5), 1.0, t + 0.1).state != LANE_FOLLOW   # 횡단보도를 다시 본다

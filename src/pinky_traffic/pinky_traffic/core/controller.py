@@ -174,6 +174,12 @@ class LaneController:
                     self.pocket_mode, self.follow_blue, self.advance = True, True, 0.0
                     self._go(POCKET_ADVANCE, now, 'blue near')
                     return Command(cfg.v_min, 0.0, POCKET_ADVANCE)
+                if self.pocket_mode and self.state == LANE_FOLLOW and now - self.t_mode > cfg.pocket_giveup_sec:
+                    # 칸을 못 찾았다. '칸 안' 상태로 남으면 횡단보도도 안 보고 락도 계속 쥔다 -> 포기하고 보통 주행
+                    self.pocket_mode, self.pocket_parked = False, True
+                    self._junction(False)
+                    self.events.append((now, 'pocket give up'))
+                    return None
                 hit = self.pocket_mode and self.state == LANE_FOLLOW and p.zone_seen and p.zone_y >= cfg.park_line_row
                 self.zone_hits = self.zone_hits + 1 if hit else 0
                 if self.zone_hits >= 2:
@@ -286,6 +292,10 @@ class LaneController:
             wait = self._role_step(p, now, dt)
             if wait is not None:
                 return wait
+            if cfg.lane_role == 2 and self.pocket_mode and self.state == LANE_FOLLOW and not p.zone_seen \
+                    and now - self.t_mode < cfg.pocket_blind_sec:
+                self.t_seen = now
+                return Command(cfg.v_min, 0.0, LANE_FOLLOW, 'to green')
             if self.prefer or self.pocket_mode or self.exiting or (self.uturn_started and not self.uturn_done):
                 p.crosswalk = False                   # 유턴 구간·칸 안에는 횡단보도가 없다 (가로선 오검출 방지)
 

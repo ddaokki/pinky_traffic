@@ -115,7 +115,10 @@ class HsvDetector:
         if cv2.countNonZero(blue) >= cfg.route_min_area * w * h:
             self.uturn = blue
             self.uturn_near = np.flatnonzero(blue.any(axis=1)).max() >= cfg.route_only_row * (h - 1)
-        green = self.color_mask(frame, cfg.green_hsv_lo, cfg.green_hsv_hi)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        green = cv2.inRange(hsv, np.array(cfg.green_hsv_lo, np.uint8), np.array(cfg.green_hsv_hi, np.uint8))
+        green[: int(cfg.zone_roi_top * h)] = 0
+        green = cv2.morphologyEx(green, cv2.MORPH_OPEN, self.kernel)
         if cv2.countNonZero(green) >= cfg.route_min_area * w * h:
             self.zone_y = float(np.flatnonzero(green.any(axis=1)).max() / (h - 1))
             self.zone_x = float((np.nonzero(green)[1].mean() - w / 2.0) / (w / 2.0))

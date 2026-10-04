@@ -68,7 +68,8 @@ class Config:
     # 0 = 안 씀(기존 동작) | 1 = 1차선(왼쪽) 로봇 | 2 = 2차선(오른쪽) 로봇. 실행할 때 로봇마다 준다 (drive.sh 5번째 값)
     lane_role: int = 0
     # 2026-10-04: 벽 밑 어두운 그늘이 S 80~108, V 65~95 로 초록에 걸렸다 -> 선명하고 밝은 초록만 (로봇 카메라의 파란 테이프는 S 200, V 175)
-    green_hsv_lo: List[int] = field(default_factory=lambda: [40, 110, 100])
+    #             멀리 있는 초록 테이프는 옅어서 S 85~100 쯤, 밝기는 160 이상 -> 채도는 낮추고 밝기 기준을 올림
+    green_hsv_lo: List[int] = field(default_factory=lambda: [40, 80, 120])
     green_hsv_hi: List[int] = field(default_factory=lambda: [90, 255, 255])
     junction_resource: str = 'junction'   # 유턴 구간 + 초록 칸 입구. 2대일 때 한 대씩만 지나간다 (use_coordinator)
     uturn_min_deg: float = 140.0     # 1차선: 이만큼 돌기 전에 파란 선이 안 보이면(카메라 밑으로 사라짐) 오른쪽으로 돌며 다시 찾는다
@@ -78,7 +79,10 @@ class Config:
     # 2차선 로봇의 칸 드나들기: 파란 화살표가 칸 입구 위를 지나간다. 파란 선이 발밑에 오면 그 선을 따라
     # pocket_advance_m 만큼 더 간 뒤 제자리에서 오른쪽으로 pocket_turn_deg 돌아 칸으로 들어간다.
     # 나올 때는 파란 선이 발밑에 오면 exit_advance_m 더 간 뒤 왼쪽으로 돈다. (거리는 명령 속도를 더해서 잰다)
-    pocket_advance_m: float = 0.18
+    pocket_advance_m: float = 0.22
+    zone_roi_top: float = 0.25       # 초록 선은 이 행 아래에서 찾는다 (칸에 막 들어섰을 때는 멀어서 차선 ROI 보다 위에 보인다)
+    pocket_giveup_sec: float = 15.0  # 칸 쪽으로 돈 뒤 이 시간 안에 초록 앞에 못 서면 칸을 포기하고 보통 주행으로 돌아간다
+    pocket_blind_sec: float = 4.0    # 칸 쪽으로 돈 뒤 초록이 아직 안 보이면 이 시간까지는 곧장 간다 (흰 선 좌우 구분을 믿지 않는다)
     exit_advance_m: float = 0.06
     pocket_turn_deg: float = 90.0
     side_spin_w: float = 0.6         # 한쪽 선만 따라가는 중에 그 선을 놓치면 그쪽으로 제자리 회전하며 찾는다 (rad/s)
