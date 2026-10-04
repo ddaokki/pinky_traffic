@@ -204,7 +204,7 @@ def route_end_bar(route, cfg, ref=None):
     길 중심(ref)의 양쪽에 걸쳐 있어야 한다 (한쪽 차선이 휘어 보이는 것과 구분).
 
     통로 입구에서는 비스듬히 뻗은 통로 선 자체가 가로선처럼 보인다 (2026-10-04: 들어서자마자 돌아섬).
-    그래서 진짜 끝 선의 모양을 더 확인한다: 선 너머(위)에는 통로 색이 없고, 선 앞(아래)에는 양쪽 차선이 있다.
+    그래서 진짜 끝 선의 모양을 더 확인한다: 선 너머(위)에는 통로 색이 없고, 선의 양쪽 끝에 차선이 붙어 있다.
     """
     h, w = route.shape[:2]
     k = max(9, int(cfg.route_end_width * w)) | 1
@@ -236,9 +236,23 @@ def route_end_bar(route, cfg, ref=None):
     rest = route & ~bar
     if cv2.countNonZero(rest[:max(0, top - 2)]) > 0.001 * w * h:
         return None, 0.0                                           # 선 너머에 통로가 더 있다 = 끝이 아니다
-    below = np.flatnonzero(rest[top:].any(axis=0))
-    if below.size == 0 or below.min() > ref - margin or below.max() < ref + margin:
-        return None, 0.0                                           # 선 앞에 양쪽 차선이 없다
+    # 진짜 끝 선은 양쪽 끝에서 차선이 각각 로봇 쪽으로 내려온다 (ㄷ자). 통로가 꺾이는 곳에서 앞을 가로지르는
+    # 차선은 한쪽 끝에만 이어져 있다 (2026-10-04: 꺾이는 곳의 왼쪽 선을 끝 선으로 보고 도중에 돌아섬).
+    near = cv2.dilate(bar, np.ones((7, 7), np.uint8)) > 0
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(rest, connectivity=8)
+    sides = set()
+    for j in range(1, n):
+        leg = labels == j
+        touch = np.flatnonzero((leg & near).any(axis=0))
+        reach = stats[j, cv2.CC_STAT_TOP] + stats[j, cv2.CC_STAT_HEIGHT] - (top + bh)
+        if touch.size == 0 or reach < 0.06 * h:
+            continue                                               # 선에 안 붙었거나 로봇 쪽으로 안 내려온다
+        if touch.mean() < x + 0.4 * bw:
+            sides.add('left')
+        elif touch.mean() > x + 0.6 * bw:
+            sides.add('right')
+    if len(sides) < 2:
+        return None, 0.0
     return bar, float((top + bh - 1) / (h - 1))
 
 
