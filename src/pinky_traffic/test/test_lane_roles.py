@@ -75,7 +75,7 @@ def test_prefer_right_uses_only_right_line():
 # ---------- 제어 ----------
 
 def test_lane1_uturn_then_follow_right_then_normal():
-    c = started(lane_role=1, junction_clear_sec=8.0)
+    c = started(lane_role=1, junction_clear_sec=8.0, uturn_min_deg=0.0)
     assert c.step(see(), 1.0, 0.1).state == LANE_FOLLOW and c.prefer == ''
     c.step(see(uturn_seen=True, uturn_near=True), 1.0, 1.0)
     assert c.uturn_started and not c.uturn_done
@@ -133,7 +133,7 @@ def test_green_before_blue_is_ignored_by_lane2():
 
 
 def test_lost_preferred_line_spins_toward_it():
-    c = started(lane_role=1, side_spin_w=0.6)
+    c = started(lane_role=1, side_spin_w=0.6, uturn_min_deg=0.0)
     c.step(see(uturn_seen=True, uturn_near=True), 1.0, 0.1)
     c.step(see(), 1.0, 0.2)
     c.step(see(), 1.0, 1.4)                                               # 유턴 끝 -> 오른쪽 선만 따라간다
@@ -152,7 +152,7 @@ def test_crosswalk_first_seen_close_is_ignored():
 def test_two_robots_take_turns_at_junction():
     now = [0.0]
     mgr = LockManager(lease_sec=4.0, clock=lambda: now[0])
-    cfg = dict(use_coordinator=True, v_min=0.04, park_turn_w=0.8, exit_wait_sec=2.0, junction_clear_sec=8.0,
+    cfg = dict(use_coordinator=True, uturn_min_deg=0.0, v_min=0.04, park_turn_w=0.8, exit_wait_sec=2.0, junction_clear_sec=8.0,
                exit_follow_sec=8.0, pocket_advance_m=0.18)
     a = started(LocalLock(mgr, 'a'), lane_role=1, **cfg)
     b = started(LocalLock(mgr, 'b'), lane_role=2, **cfg)
@@ -184,3 +184,28 @@ def test_two_robots_take_turns_at_junction():
     assert a.uturn_done and cb.state == WAIT_EXIT
     ca, cb = tick(see(), see(), 82)                                       # 1차선 로봇이 구간을 내줬다
     assert cb.state == LANE_FOLLOW and b.exiting and not a.junction_held
+
+
+def test_blue_lost_mid_uturn_spins_right_until_found():
+    # 2026-10-04 pinky2: 파란 선의 꺾이는 곳에서 선이 카메라 밑으로 사라져 유턴이 끝난 줄 알고 벽으로 갔다
+    c = started(lane_role=1, side_spin_w=0.6, uturn_min_deg=140.0)
+    c.step(see(uturn_seen=True, uturn_near=True), 1.0, 0.1)
+    assert c.uturn_started and c.follow_blue
+    c.step(see(), 1.0, 0.2)
+    cmd, t = run(c, see(), 0.2, 2.0)                                      # 아직 덜 돌았는데 파란 선이 안 보인다
+    assert cmd.v == 0 and cmd.w == -0.6 and not c.uturn_done
+    cmd = c.step(see(uturn_seen=True, uturn_near=True), 1.0, t + 0.1)     # 다시 보이면 따라간다
+    assert cmd.v > 0
+    cmd, t = run(c, see(), t + 0.1, t + 6.0)                              # 계속 돌아 140도를 넘기면 유턴 끝
+    assert c.uturn_done and c.prefer == 'right' and not c.follow_blue
+
+
+def test_stripes_taken_as_left_line_do_not_shrink_lane_width():
+    det = HsvDetector(Config())
+    det.detect(lanes(floor()))
+    learned = dict(det.memory.width)
+    img = lanes(floor())
+    cv2.rectangle(img, (150, 150), (175, 215), WHITE, -1)                 # 오른쪽 선 가까이에 흰 덩어리(줄무늬)
+    det.detect(img)
+    for i, wdt in det.memory.width.items():
+        assert wdt > 0.85 * learned[i]

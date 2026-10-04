@@ -101,6 +101,15 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
             p.right_pts.append((rx, y))
         if lx is not None and rx is not None:
             width = rx - lx
+            known = memory.width.get(i)
+            # 기억한 폭과 40% 넘게 다르면 진짜 차선 쌍이 아니다 (횡단보도 줄무늬·갈림길). 기억을 고치지 않고,
+            # 화면 가운데에 가까운 쪽 선 하나만 믿는다 (2026-10-04: 줄무늬를 왼쪽 선으로 보고 폭을 좁게 배워 선 위로 달렸다)
+            if known is not None and abs(width - known) > 0.4 * known:
+                if abs(lx - half) < abs(rx - half):
+                    centers[i] = (lx + known / 2.0, y)
+                else:
+                    centers[i] = (rx - known / 2.0, y)
+                continue
             memory.width[i] = 0.7 * memory.width.get(i, width) + 0.3 * width
             centers[i] = ((lx + rx) / 2.0, y)
         elif lx is not None:

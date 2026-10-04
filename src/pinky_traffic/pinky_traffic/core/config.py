@@ -71,6 +71,7 @@ class Config:
     green_hsv_lo: List[int] = field(default_factory=lambda: [40, 110, 100])
     green_hsv_hi: List[int] = field(default_factory=lambda: [90, 255, 255])
     junction_resource: str = 'junction'   # 유턴 구간 + 초록 칸 입구. 2대일 때 한 대씩만 지나간다 (use_coordinator)
+    uturn_min_deg: float = 140.0     # 1차선: 이만큼 돌기 전에 파란 선이 안 보이면(카메라 밑으로 사라짐) 오른쪽으로 돌며 다시 찾는다
     junction_clear_sec: float = 8.0  # 1차선 로봇: 파란 선이 끝난 뒤 이 시간 동안 오른쪽 선만 따라가고(칸 입구를 지나침) 그 뒤 구간을 내준다
     exit_wait_sec: float = 2.0       # 2차선 로봇: 칸에서 돌아선 뒤 최소 이만큼 기다렸다가 나간다
     exit_follow_sec: float = 8.0     # 2차선 로봇: 칸에서 나올 때 이 시간 동안 왼쪽 선만 따라간다 (2차선으로 좌회전)

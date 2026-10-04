@@ -107,6 +107,7 @@ class LaneController:
         self.prefer = ''                    # 'left' | 'right' : 그쪽 선만 따라간다 (검출기에 전달)
         self.follow_blue = False            # 2차선: 파란 선을 가운데 두고 따라간다 (검출기에 전달)
         self.advance = 0.0                  # 칸 입구에서 더 간 거리 (명령 속도 적분)
+        self.turned = 0.0                   # 1차선: 유턴하며 돈 각도 (rad)
         self.exit_turned = False            # 2차선: 칸에서 나오는 좌회전을 했다
         self.junction_held = False          # 유턴 구간 락을 쥐고 있다
         self.uturn_started = False          # 1차선: 파란 선에 올라탔다
@@ -129,7 +130,7 @@ class LaneController:
         self.junction_held = False
         return True
 
-    def _role_step(self, p, now):
+    def _role_step(self, p, now, dt=0.0):
         """lane_role 에 따른 판단. 멈춰 기다려야 하면 Command 를, 아니면 None 을 돌려준다.
 
         1차선: 파란 선을 만나면 구간 락을 얻고 파란 선을 따라 유턴 -> 파란 선이 끝나면 오른쪽 선만 따라
@@ -147,10 +148,18 @@ class LaneController:
                 self.events.append((now, 'uturn start'))
             if self.uturn_started and not self.uturn_done:
                 self._junction(True)
+                self.follow_blue = True
+                self.turned += abs(self.last_w) * dt          # 돈 각도 (명령 회전 속도를 더해서 잰다)
                 if p.uturn_seen:
                     self.t_blue = now
+                elif self.turned < math.radians(cfg.uturn_min_deg):
+                    # 유턴이 덜 끝났는데 파란 선이 안 보인다 = 꺾이는 곳에서 선이 카메라 밑으로 들어갔다.
+                    # 유턴 방향(오른쪽)으로 제자리 회전하며 다시 찾는다
+                    if now - self.t_blue > cfg.lost_grace_sec and now - self.t_blue <= cfg.side_search_sec:
+                        self.last_w = -cfg.side_spin_w
+                        return Command(0.0, self.last_w, self.state, 'search blue')
                 elif now - self.t_blue > 1.0:
-                    self.uturn_done, self.prefer, self.t_mode = True, 'right', now
+                    self.uturn_done, self.follow_blue, self.prefer, self.t_mode = True, False, 'right', now
                     self.events.append((now, 'uturn done'))
             elif self.uturn_done and self.junction_held:
                 self._junction(True)
@@ -274,7 +283,7 @@ class LaneController:
             else:
                 return Command(0.0, cfg.park_turn_w if self.exiting else -cfg.park_turn_w, POCKET_TURN)
         if cfg.lane_role:
-            wait = self._role_step(p, now)
+            wait = self._role_step(p, now, dt)
             if wait is not None:
                 return wait
             if self.prefer or self.pocket_mode or self.exiting or (self.uturn_started and not self.uturn_done):
@@ -297,7 +306,7 @@ class LaneController:
             self._go(PARK_TURN if cfg.park_turn_deg > 0 else PARKED, now, reason)
             return Command(0.0, 0.0, self.state)
         # 유턴 구간은 벽이 가깝다 (통로 안과 같이 더 가까이까지 허용)
-        in_uturn = self.uturn_started and not self.uturn_done
+        in_uturn = self.uturn_started and self.junction_held      # 유턴을 마치고 구간을 벗어날 때까지
         stop_m = cfg.park_stop_m if self.in_route or in_uturn else cfg.obstacle_stop_m
 
         # ---- 전방 장애물 (라이다 또는 yolo 'robot') : 어떤 주행 상태보다 우선 ----

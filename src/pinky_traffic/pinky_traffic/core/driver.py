@@ -31,6 +31,12 @@ class Driver:
         self.state = {}
         self.record_dir = record_dir        # 주면 달리는 동안 카메라 화면을 3장에 1장꼴로 저장 (원인 분석용)
 
+    def _forget(self):
+        """출발할 때 차선 기억(폭·중심)을 비운다. 서 있는 동안 로봇을 들고 옮기면 엉뚱한 화면으로 기억이 채워진다."""
+        memory = getattr(self.detector, 'memory', None)
+        if memory is not None:
+            memory.reset()
+
     def _on_command(self, cmd):
         with self.mutex:
             self.pending.append(cmd)
@@ -53,6 +59,7 @@ class Driver:
                     if 'backend' in changed or 'weights' in changed:
                         self.detector = make_detector(self.cfg)
             elif item == 'start':
+                self._forget()
                 self.controller.start(now)
             elif item == 'stop':
                 self.controller.stop(now)
@@ -64,6 +71,7 @@ class Driver:
         now = time.time() if now is None else now
         if self.autostart:
             self.autostart = False
+            self._forget()
             self.controller.start(now)
         self._apply_pending(now)
         self.detector.follow_blue = self.controller.follow_blue
