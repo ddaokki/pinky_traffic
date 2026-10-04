@@ -114,8 +114,8 @@ def test_lane2_enters_pocket_turns_at_green_and_exits_left():
     assert c.step(see(zone_seen=True, zone_y=0.84), 1.0, t + 0.2).state == PARK_TURN
     cmd, t = run(c, see(), t + 0.2, t + 0.2 + 3.1416 / 0.8 + 0.2)
     assert cmd.state == WAIT_EXIT and c.pocket_parked and not c.junction_held
-    cmd, t = run(c, see(), t, t + 2.2)
-    assert cmd.state == LANE_FOLLOW and c.exiting                          # 칸에서 나간다
+    cmd, t = run(c, see(offset=1.2), t, t + 2.2)
+    assert cmd.state == LANE_FOLLOW and c.exiting and cmd.w == 0 and cmd.v == 0.04   # 흰 선과 상관없이 곧장 나간다
     cmd = c.step(see(uturn_seen=True, uturn_near=True), 1.0, t + 0.1)     # 파란 선이 앞을 가로지른다
     assert cmd.state == POCKET_ADVANCE and cmd.w == 0
     cmd, t = run(c, see(uturn_seen=True, uturn_near=True), t + 0.1, t + 2.0)
@@ -242,3 +242,12 @@ def test_lane2_goes_straight_until_green_then_gives_up_if_never_found():
     cmd, t = run(c, see(), t, t + 16.0)
     assert not c.pocket_mode and not c.junction_held                       # 끝내 못 찾으면 포기
     assert c.step(see(crosswalk=True, crosswalk_y=0.5), 1.0, t + 0.1).state != LANE_FOLLOW   # 횡단보도를 다시 본다
+
+
+def test_blocked_at_corner_still_turns_in_place():
+    c = started(obstacle_stop_m=0.15)
+    c.step(see(), 1.0, 0.1)
+    cmd = c.step(see(offset=-0.5), 0.14, 0.2)
+    cmd = c.step(see(offset=-0.5), 0.14, 0.3)
+    assert cmd.state == 'blocked' and cmd.v == 0 and cmd.w > 0            # 벽 앞: 전진은 안 하고 차선 쪽(왼쪽)으로 돈다
+    assert c.step(see(), 0.5, 0.4).state == LANE_FOLLOW

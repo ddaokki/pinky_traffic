@@ -81,6 +81,7 @@ class Config:
     # 나올 때는 파란 선이 발밑에 오면 exit_advance_m 더 간 뒤 왼쪽으로 돈다. (거리는 명령 속도를 더해서 잰다)
     pocket_advance_m: float = 0.22
     zone_roi_top: float = 0.25       # 초록 선은 이 행 아래에서 찾는다 (칸에 막 들어섰을 때는 멀어서 차선 ROI 보다 위에 보인다)
+    exit_blind_sec: float = 10.0     # 칸에서 나올 때 파란 선이 발밑에 올 때까지 곧장 가는 최대 시간
     pocket_giveup_sec: float = 15.0  # 칸 쪽으로 돈 뒤 이 시간 안에 초록 앞에 못 서면 칸을 포기하고 보통 주행으로 돌아간다
     pocket_blind_sec: float = 4.0    # 칸 쪽으로 돈 뒤 초록이 아직 안 보이면 이 시간까지는 곧장 간다 (흰 선 좌우 구분을 믿지 않는다)
     exit_advance_m: float = 0.06

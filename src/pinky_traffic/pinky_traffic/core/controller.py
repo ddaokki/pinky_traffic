@@ -191,7 +191,13 @@ class LaneController:
                     self.follow_blue, self.advance, self.exit_turned = False, 0.0, True   # 나가는 회전은 한 번만
                     self._go(POCKET_ADVANCE, now, 'blue near (exit)')
                     return Command(cfg.v_min, 0.0, POCKET_ADVANCE)
-                if now - self.t_mode >= cfg.exit_follow_sec and self.state == LANE_FOLLOW:
+                if not self.exit_turned and self.state == LANE_FOLLOW and now - self.t_mode < cfg.exit_blind_sec:
+                    # 칸 안의 흰 선은 좌우 구분이 틀어진다 (2026-10-04: 나오자마자 오른쪽으로 꺾어 벽으로 감).
+                    # 돌아선 방향 그대로 곧장 나가서 파란 선을 만난 뒤 왼쪽으로 돈다
+                    self.t_seen = now
+                    return Command(cfg.v_min, 0.0, LANE_FOLLOW, 'exit straight')
+                if now - self.t_mode >= cfg.exit_follow_sec and self.state == LANE_FOLLOW and \
+                        (self.exit_turned or now - self.t_mode >= cfg.exit_blind_sec):
                     self.exiting, self.prefer = False, ''
                     self._junction(False)
         return None
@@ -329,7 +335,10 @@ class LaneController:
             if cleared:
                 self._go(self.resume_state, now, 'clear')
             else:
-                return Command(0.0, 0.0, BLOCKED, f'front {front_m}')
+                # 앞이 막혀도 제자리 회전은 한다. 코너에서 벽을 마주 보고 선 경우, 차선 쪽으로 돌면 앞이 트인다
+                # (2026-10-04: 벽 가까운 코너에서 0.15m 에 걸려 그대로 서 있었다)
+                w = self._steer(p, dt, 0.0)[1] if p.ok else 0.0
+                return Command(0.0, w, BLOCKED, f'front {front_m}')
         elif blocked and self.state in (LANE_FOLLOW, APPROACH, CROSSING, LOST):
             self.resume_state = self.state if self.state != LOST else LANE_FOLLOW
             self._go(BLOCKED, now, f'front={front_m}')
