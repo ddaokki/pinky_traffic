@@ -66,6 +66,7 @@ class Driver:
             self.autostart = False
             self.controller.start(now)
         self._apply_pending(now)
+        self.detector.follow_blue = self.controller.follow_blue
         self.detector.prefer = self.controller.prefer      # 갈림길에서 어느 쪽 선을 따라갈지
         p, masks, small = self.detector.detect(frame)
         cmd = self.controller.step(p, front_m, now)

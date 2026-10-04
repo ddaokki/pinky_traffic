@@ -21,6 +21,8 @@ ESTOP = 'estop'
 PARK_TURN = 'park_turn'            # 칸 끝에서 제자리 회전 (나갈 방향으로 돌아선다)
 PARKED = 'parked'
 WAIT_JUNCTION = 'wait_junction'    # 유턴 구간이 비기를 기다린다 (2대)
+POCKET_ADVANCE = 'pocket_advance'  # 2차선: 파란 선을 따라 칸 입구 가운데까지 간다
+POCKET_TURN = 'pocket_turn'        # 2차선: 제자리에서 칸 쪽으로(들어갈 때 오른쪽, 나올 때 왼쪽) 돈다
 WAIT_EXIT = 'wait_exit'            # 초록 칸에서 돌아선 뒤, 나가도 될 때까지 기다린다
 
 # LED (r, g, b): 달리는 중 초록, 서 있으면 빨강, 주차 통로 안에서는 통로 색, 주차 완료 초록
@@ -103,6 +105,9 @@ class LaneController:
     def _reset_role(self):
         """lane_role 맵(파란 유턴 / 초록 칸)의 진행 상태."""
         self.prefer = ''                    # 'left' | 'right' : 그쪽 선만 따라간다 (검출기에 전달)
+        self.follow_blue = False            # 2차선: 파란 선을 가운데 두고 따라간다 (검출기에 전달)
+        self.advance = 0.0                  # 칸 입구에서 더 간 거리 (명령 속도 적분)
+        self.exit_turned = False            # 2차선: 칸에서 나오는 좌회전을 했다
         self.junction_held = False          # 유턴 구간 락을 쥐고 있다
         self.uturn_started = False          # 1차선: 파란 선에 올라탔다
         self.uturn_done = False             # 1차선: 파란 선이 끝났다 (2차선으로 돌아가는 중)
@@ -156,18 +161,22 @@ class LaneController:
             if not self.pocket_parked:
                 if not self._junction(True):
                     return Command(0.0, 0.0, WAIT_JUNCTION, 'junction busy')
-                if p.uturn_seen and not self.pocket_mode:
-                    self.pocket_mode, self.prefer = True, 'right'
-                    self.events.append((now, 'pocket: follow right'))
-                hit = self.pocket_mode and p.zone_seen and p.zone_y >= cfg.park_line_row
+                if p.uturn_near and not self.pocket_mode and self.state == LANE_FOLLOW:
+                    self.pocket_mode, self.follow_blue, self.advance = True, True, 0.0
+                    self._go(POCKET_ADVANCE, now, 'blue near')
+                    return Command(cfg.v_min, 0.0, POCKET_ADVANCE)
+                hit = self.pocket_mode and self.state == LANE_FOLLOW and p.zone_seen and p.zone_y >= cfg.park_line_row
                 self.zone_hits = self.zone_hits + 1 if hit else 0
                 if self.zone_hits >= 2:
-                    self.prefer = ''
                     self._go(PARK_TURN, now, f'green y={p.zone_y:.2f}')
                     return Command(0.0, 0.0, PARK_TURN)
             elif self.exiting:
                 self._junction(True)
-                if now - self.t_mode >= cfg.exit_follow_sec:
+                if p.uturn_near and not self.exit_turned and self.state == LANE_FOLLOW:
+                    self.follow_blue, self.advance, self.exit_turned = False, 0.0, True   # 나가는 회전은 한 번만
+                    self._go(POCKET_ADVANCE, now, 'blue near (exit)')
+                    return Command(cfg.v_min, 0.0, POCKET_ADVANCE)
+                if now - self.t_mode >= cfg.exit_follow_sec and self.state == LANE_FOLLOW:
                     self.exiting, self.prefer = False, ''
                     self._junction(False)
         return None
@@ -228,6 +237,8 @@ class LaneController:
 
         if self.state in (IDLE, ESTOP, PARKED):
             return Command(0.0, 0.0, self.state)
+        if self.junction_held and self.state in (PARK_TURN, POCKET_ADVANCE, POCKET_TURN):
+            self._junction(True)                      # 기동 중에도 락을 계속 쥔다 (하트비트)
         if self.state == PARK_TURN:
             # 각도 센서 없이 시간으로 돈다: 각도 / 회전 속도
             if now - self.t_state >= math.radians(cfg.park_turn_deg) / max(0.1, cfg.park_turn_w):
@@ -242,14 +253,31 @@ class LaneController:
         if self.state == WAIT_EXIT:
             if now - self.t_state < cfg.exit_wait_sec or not self._junction(True):
                 return Command(0.0, 0.0, WAIT_EXIT)
-            self.exiting, self.prefer, self.t_mode, self.t_seen = True, 'left', now, now
+            self.exiting, self.prefer, self.t_mode, self.t_seen = True, '', now, now
             self.pid.reset()
             self._go(LANE_FOLLOW, now, 'exit pocket')
+        if self.state == POCKET_ADVANCE:
+            # 들어갈 때는 파란 선을 따라, 나올 때는 곧장. 정해진 거리만큼 간 뒤 제자리 회전
+            goal = cfg.exit_advance_m if self.exiting else cfg.pocket_advance_m
+            self.advance += cfg.v_min * dt
+            if self.advance >= goal:
+                self.follow_blue = False
+                self._go(POCKET_TURN, now, f'advanced {self.advance:.2f}m')
+                return Command(0.0, 0.0, POCKET_TURN)
+            w = self._steer(p, dt, cfg.v_min)[1] if (p.ok and self.follow_blue) else 0.0
+            return Command(cfg.v_min, w, POCKET_ADVANCE)
+        if self.state == POCKET_TURN:
+            if now - self.t_state >= math.radians(cfg.pocket_turn_deg) / max(0.1, cfg.park_turn_w):
+                self.pid.reset()
+                self.t_seen, self.t_mode = now, now
+                self._go(LANE_FOLLOW, now, 'turned')
+            else:
+                return Command(0.0, cfg.park_turn_w if self.exiting else -cfg.park_turn_w, POCKET_TURN)
         if cfg.lane_role:
             wait = self._role_step(p, now)
             if wait is not None:
                 return wait
-            if self.prefer or self.pocket_mode or (self.uturn_started and not self.uturn_done):
+            if self.prefer or self.pocket_mode or self.exiting or (self.uturn_started and not self.uturn_done):
                 p.crosswalk = False                   # 유턴 구간·칸 안에는 횡단보도가 없다 (가로선 오검출 방지)
 
         # ---- 주차 통로: 들어서면 기억하고, 칸 끝 벽이 park_stop_m 안에 오면 주차 완료 ----
@@ -329,7 +357,7 @@ class LaneController:
             cooled = now - self.t_cross_done >= cfg.crosswalk_cooldown_sec
             # 진짜 횡단보도는 먼 곳에서 먼저 보이고 점점 다가온다. 처음부터 정지 행보다 가까이(발밑)에서
             # 나타난 것은 코너의 테이프 조각 같은 오검출로 보고 무시한다 (2026-10-04 코너에서 오인 정지)
-            if p.crosswalk and cooled and p.crosswalk_y < cfg.crosswalk_stop_row:
+            if p.crosswalk and cooled and p.crosswalk_y < cfg.crosswalk_stop_row - 0.12:
                 self._go(APPROACH, now, f'crosswalk y={p.crosswalk_y:.2f}')
             else:
                 v_target = cfg.v_max

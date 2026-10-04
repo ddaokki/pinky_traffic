@@ -21,6 +21,7 @@ class HsvDetector:
         self.route_end_y = 0.0
         self.prefer = ''                 # 'left' | 'right' : 제어기가 정한다. 그쪽 선만 보고 따라간다 (갈림길)
         self.uturn = None                # 파란 유턴 선 마스크 (lane_role 일 때)
+        self.follow_blue = False         # 제어기가 정한다: 2차선 로봇도 잠깐 파란 선을 따라간다 (칸 입구까지)
         self.uturn_near = False
         self.zone_y = 0.0
 
@@ -121,7 +122,7 @@ class HsvDetector:
         frame = resize_to(frame, self.cfg.proc_width)
         masks, found = self.masks(frame)
         self.role_marks(frame)
-        if self.cfg.lane_role == 1 and self.uturn_near:
+        if self.uturn is not None and ((self.cfg.lane_role == 1 and self.uturn_near) or self.follow_blue):
             # 1차선 로봇: 파란 선이 발밑까지 오면 흰 선 대신 파란 선을 가운데 두고 따라간다
             p = center_line_perception(self.uturn, self.cfg)
             masks = {'left': None, 'right': None, 'crosswalk': self.uturn}

@@ -67,12 +67,19 @@ class Config:
     # ---------- 2026-10-04 맵: 1차선은 파란 선 따라 유턴해 2차선으로 돌아오고, 2차선은 초록 칸으로 빠진다 ----------
     # 0 = 안 씀(기존 동작) | 1 = 1차선(왼쪽) 로봇 | 2 = 2차선(오른쪽) 로봇. 실행할 때 로봇마다 준다 (drive.sh 5번째 값)
     lane_role: int = 0
-    green_hsv_lo: List[int] = field(default_factory=lambda: [40, 80, 50])
+    # 2026-10-04: 벽 밑 어두운 그늘이 S 80~108, V 65~95 로 초록에 걸렸다 -> 선명하고 밝은 초록만 (로봇 카메라의 파란 테이프는 S 200, V 175)
+    green_hsv_lo: List[int] = field(default_factory=lambda: [40, 110, 100])
     green_hsv_hi: List[int] = field(default_factory=lambda: [90, 255, 255])
     junction_resource: str = 'junction'   # 유턴 구간 + 초록 칸 입구. 2대일 때 한 대씩만 지나간다 (use_coordinator)
     junction_clear_sec: float = 8.0  # 1차선 로봇: 파란 선이 끝난 뒤 이 시간 동안 오른쪽 선만 따라가고(칸 입구를 지나침) 그 뒤 구간을 내준다
     exit_wait_sec: float = 2.0       # 2차선 로봇: 칸에서 돌아선 뒤 최소 이만큼 기다렸다가 나간다
     exit_follow_sec: float = 8.0     # 2차선 로봇: 칸에서 나올 때 이 시간 동안 왼쪽 선만 따라간다 (2차선으로 좌회전)
+    # 2차선 로봇의 칸 드나들기: 파란 화살표가 칸 입구 위를 지나간다. 파란 선이 발밑에 오면 그 선을 따라
+    # pocket_advance_m 만큼 더 간 뒤 제자리에서 오른쪽으로 pocket_turn_deg 돌아 칸으로 들어간다.
+    # 나올 때는 파란 선이 발밑에 오면 exit_advance_m 더 간 뒤 왼쪽으로 돈다. (거리는 명령 속도를 더해서 잰다)
+    pocket_advance_m: float = 0.18
+    exit_advance_m: float = 0.06
+    pocket_turn_deg: float = 90.0
     side_spin_w: float = 0.6         # 한쪽 선만 따라가는 중에 그 선을 놓치면 그쪽으로 제자리 회전하며 찾는다 (rad/s)
     side_search_sec: float = 6.0     # 그렇게 찾는 최대 시간
 
@@ -164,5 +171,8 @@ TUNABLE = [
     ('park_stop_m', 0.05, 0.40, 0.01),
     ('park_line_row', 0.55, 0.95, 0.01),
     ('park_turn_deg', 0.0, 360.0, 5.0),
+    ('pocket_advance_m', 0.0, 0.40, 0.01),
+    ('exit_advance_m', 0.0, 0.40, 0.01),
+    ('pocket_turn_deg', 30.0, 150.0, 5.0),
     ('conf', 0.1, 0.9, 0.05),
 ]

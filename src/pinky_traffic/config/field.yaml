@@ -35,5 +35,5 @@ lane_role: 0
 park_stop_m: 0.15           # ★ 라이다~벽 거리. 칸 끝 선을 넘으면 키우고, 너무 앞에서 서면 줄인다
 
 # 2대 운용 (1대 시연이 끝난 뒤에)
-use_coordinator: false
+use_coordinator: true       # 2026-10-04: 2대 주행. 유턴 구간(junction)과 횡단보도를 한 대씩 지나간다. 대시보드가 켜져 있어야 한다
 dashboard_url: http://127.0.0.1:8088
