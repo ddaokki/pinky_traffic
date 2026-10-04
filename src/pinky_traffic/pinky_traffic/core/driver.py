@@ -2,6 +2,7 @@
 
 ROS 노드(nodes/lane_driver.py)와 시뮬레이터(tools/run_sim.py --dashboard)가 같이 쓴다.
 """
+import os
 import threading
 import time
 
@@ -14,7 +15,7 @@ from .perception import draw_debug
 
 
 class Driver:
-    def __init__(self, cfg, name='pinky', use_dashboard=True, autostart=False, log=print):
+    def __init__(self, cfg, name='pinky', use_dashboard=True, autostart=False, log=print, record_dir=None):
         self.cfg, self.name, self.log = cfg, name, log
         self.detector = make_detector(cfg)
         self.pending = []                   # 대시보드에서 온 명령 (다른 스레드) -> 제어 루프에서 처리
@@ -28,6 +29,7 @@ class Driver:
         self.last = None
         self.debug = None
         self.state = {}
+        self.record_dir = record_dir        # 주면 달리는 동안 카메라 화면을 3장에 1장꼴로 저장 (원인 분석용)
 
     def _on_command(self, cmd):
         with self.mutex:
@@ -71,6 +73,9 @@ class Driver:
         self._t_prev = now
         self.last = (p, cmd)
         self._n += 1
+        if self.record_dir and self._n % 3 == 0 and cmd.state != 'idle':
+            os.makedirs(self.record_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(self.record_dir, f'{self._n:06d}_{cmd.state}.jpg'), small)
         state = {'state': cmd.state, 'v': round(cmd.v, 3), 'w': round(cmd.w, 3), 'offset': round(p.offset, 3),
                  'heading': round(p.heading, 3), 'ok': p.ok, 'left': p.left_seen, 'right': p.right_seen,
                  'crosswalk': p.crosswalk, 'crosswalk_y': round(p.crosswalk_y, 2),

@@ -186,7 +186,7 @@ def end_line(y):
 
 
 def test_stops_at_end_line_turns_around_then_parked():
-    c = started(route_color='blue', park_line_row=0.80, park_turn_deg=180.0, park_turn_w=0.8)
+    c = started(route_color='blue', park_line_row=0.80, park_turn_deg=180.0, park_turn_w=0.8, park_min_route_sec=0.0)
     assert c.step(end_line(0.60), 0.50, 0.1).state == LANE_FOLLOW       # 아직 멀다
     assert c.step(end_line(0.82), 0.40, 0.2).state == LANE_FOLLOW       # 한 프레임만으로는 안 선다
     cmd = c.step(end_line(0.84), 0.40, 0.3)
@@ -212,3 +212,42 @@ def test_wall_fallback_also_turns_around():
     assert c.step(lane(True), 0.14, 0.2).state == PARK_TURN
     c.estop(0.3)
     assert c.step(lane(True), 0.14, 0.4).v == 0 and c.state != PARK_TURN
+
+
+def test_crosswalk_first_seen_under_the_nose_is_ignored():
+    # 2026-10-04: 코너에서 선을 놓친 뒤 발밑(y 0.92)의 테이프 조각들이 횡단보도로 잡혀 바로 멈췄다
+    c = started(crosswalk_stop_row=0.80)
+    near = Perception(ok=True, left_seen=True, crosswalk=True, crosswalk_y=0.92)
+    for i in range(5):
+        assert c.step(near, 0.5, 0.1 * (i + 1)).state == LANE_FOLLOW
+    far = Perception(ok=True, left_seen=True, right_seen=True, crosswalk=True, crosswalk_y=0.60)
+    assert c.step(far, 0.5, 1.0).state != LANE_FOLLOW          # 먼 곳에서 보이면 원래대로 접근
+    assert c.step(near, 0.5, 1.1).state == STOP
+
+
+def test_driver_saves_frames_while_driving(tmp_path):
+    from pinky_traffic.core.driver import Driver
+    d = Driver(Config(), use_dashboard=False, autostart=True, record_dir=str(tmp_path / 'frames'))
+    for i in range(6):
+        d.process(lines(floor(), WHITE), 1.0, 0.1 * i)
+    assert len(list((tmp_path / 'frames').glob('*.jpg'))) == 2
+
+
+def test_diagonal_route_lines_at_entry_are_not_end_line():
+    # 2026-10-04: 통로 입구에서 비스듬히 뻗은 파란 선이 가로선처럼 보여 들어서자마자 돌아섰다
+    for ys in ([(200, 150)], [(200, 150), (150, 110)], [(150, 110)]):
+        img = floor()
+        for y0, y1 in ys:
+            cv2.line(img, (20, y0), (300, y1), BLUE, 10)
+        det = HsvDetector(Config(route_color='blue'))
+        det.detect(lines(floor(), BLUE))
+        p, _, _ = det.detect(img)
+        assert not p.route_end, ys
+
+
+def test_end_line_right_after_entering_route_waits():
+    c = started(route_color='blue', park_min_route_sec=3.0)
+    for i in range(4):
+        assert c.step(end_line(0.85), 0.6, 0.1 * (i + 1)).state == LANE_FOLLOW
+    c.step(end_line(0.85), 0.6, 3.2)
+    assert c.step(end_line(0.85), 0.6, 3.3).state == PARK_TURN

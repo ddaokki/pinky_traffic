@@ -93,6 +93,7 @@ class LaneController:
         self.last_w = 0.0
         self.crossings = 0
         self.in_route = False               # 주차 통로에 들어섰다 (STOP/START 전까지 유지)
+        self.t_route = 0.0                  # 통로에 들어선 시각
         self.end_hits = 0                   # 칸 끝 선이 정지 행까지 온 연속 프레임 수
         self.events = []                    # (t, 문자열) 최근 이벤트
 
@@ -158,9 +159,11 @@ class LaneController:
         if p.route_near and self.state != BLOCKED:
             if not self.in_route:
                 self.events.append((now, 'route entered'))
+                self.t_route = now
             self.in_route = True
         # 끝 선이 park_line_row 까지 내려왔거나(2프레임 연속), 선을 못 봤어도 벽이 park_stop_m 안이면 주차
-        at_line = self.in_route and p.route_end and p.route_end_y >= cfg.park_line_row
+        at_line = self.in_route and p.route_end and p.route_end_y >= cfg.park_line_row and \
+            now - self.t_route >= cfg.park_min_route_sec
         self.end_hits = self.end_hits + 1 if at_line else 0
         at_wall = self.in_route and front_m is not None and front_m < cfg.park_stop_m
         if self.end_hits >= 2 or at_wall:
@@ -221,7 +224,9 @@ class LaneController:
 
         if self.state == LANE_FOLLOW:
             cooled = now - self.t_cross_done >= cfg.crosswalk_cooldown_sec
-            if p.crosswalk and cooled:
+            # 진짜 횡단보도는 먼 곳에서 먼저 보이고 점점 다가온다. 처음부터 정지 행보다 가까이(발밑)에서
+            # 나타난 것은 코너의 테이프 조각 같은 오검출로 보고 무시한다 (2026-10-04 코너에서 오인 정지)
+            if p.crosswalk and cooled and p.crosswalk_y < cfg.crosswalk_stop_row:
                 self._go(APPROACH, now, f'crosswalk y={p.crosswalk_y:.2f}')
             else:
                 v_target = cfg.v_max

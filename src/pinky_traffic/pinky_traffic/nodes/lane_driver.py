@@ -55,13 +55,15 @@ class LaneDriverNode(Node):
         self.declare_parameter('dashboard_url', '')
         self.declare_parameter('autostart', False)
         self.declare_parameter('image_timeout', 0.7)
+        self.declare_parameter('record', True)       # runs/frames_<시각>/ 에 카메라 화면 저장 (실행한 폴더 기준)
         self.declare_parameter('use_led', True)      # 로봇에서 ros2 run pinky_led led_server 가 떠 있어야 켜진다
         get = lambda name: self.get_parameter(name).value
 
         overrides = {k: get(k) for k in ('backend', 'weights', 'dashboard_url') if get(k)}
         self.cfg = Config.load(get('config') or None, **overrides)
+        record_dir = time.strftime('runs/frames_%Y%m%d_%H%M%S') if get('record') else None
         self.driver = Driver(self.cfg, get('robot'), get('use_dashboard'), get('autostart'),
-                             log=lambda text: self.get_logger().info(text))
+                             log=lambda text: self.get_logger().info(text), record_dir=record_dir)
         self.bridge = CvBridge()
         self.front = None
         self.t_scan = 0.0

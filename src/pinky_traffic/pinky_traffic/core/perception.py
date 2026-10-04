@@ -202,6 +202,9 @@ def route_end_bar(route, cfg, ref=None):
     차선은 화면에서 세로에 가깝고 끝 선은 가로에 가깝다. 가로 ±24도 방향의 긴 선분으로 오프닝하면
     그 방향으로 길게 이어진 부분만 남는다 (로봇이 비스듬히 들어와 선이 기울어 보여도 잡힌다).
     길 중심(ref)의 양쪽에 걸쳐 있어야 한다 (한쪽 차선이 휘어 보이는 것과 구분).
+
+    통로 입구에서는 비스듬히 뻗은 통로 선 자체가 가로선처럼 보인다 (2026-10-04: 들어서자마자 돌아섬).
+    그래서 진짜 끝 선의 모양을 더 확인한다: 선 너머(위)에는 통로 색이 없고, 선 앞(아래)에는 양쪽 차선이 있다.
     """
     h, w = route.shape[:2]
     k = max(9, int(cfg.route_end_width * w)) | 1
@@ -223,7 +226,20 @@ def route_end_bar(route, cfg, ref=None):
     if cols.size == 0 or cols.min() > ref - margin or cols.max() < ref + margin:
         return None, 0.0
     bar = cv2.dilate(bar, np.ones((11, 11), np.uint8)) & route    # 오프닝으로 깎인 가장자리·끝을 되살린다
-    return bar, float(np.flatnonzero(bar.any(axis=1)).max() / (h - 1))
+    # 가로선 후보가 여럿이면 가장 가까운(아래) 것을 본다
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(bar, connectivity=8)
+    i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_TOP] + stats[1:, cv2.CC_STAT_HEIGHT]))
+    bar = np.where(labels == i, 255, 0).astype(np.uint8)
+    x, top, bw, bh = stats[i, :4]
+    if x > ref - margin or x + bw < ref + margin:
+        return None, 0.0
+    rest = route & ~bar
+    if cv2.countNonZero(rest[:max(0, top - 2)]) > 0.001 * w * h:
+        return None, 0.0                                           # 선 너머에 통로가 더 있다 = 끝이 아니다
+    below = np.flatnonzero(rest[top:].any(axis=0))
+    if below.size == 0 or below.min() > ref - margin or below.max() < ref + margin:
+        return None, 0.0                                           # 선 앞에 양쪽 차선이 없다
+    return bar, float((top + bh - 1) / (h - 1))
 
 
 def _is_u_shape(xs, bottom_rows, ref):

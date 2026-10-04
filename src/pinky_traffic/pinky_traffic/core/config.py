@@ -82,6 +82,7 @@ class Config:
     # 칸 끝을 가로지르는 통로 색 선(끝 선): 이 선이 park_line_row 까지 내려오면 멈추고 제자리에서 돌아 나갈 방향으로 선다
     route_end_width: float = 0.20    # 가로(±24도)로 영상 폭의 이 비율 이상 이어진 통로 색이면 끝 선
     park_line_row: float = 0.80      # 끝 선의 아래 끝이 이 행까지 오면 정지 (클수록 선에 더 가까이 가서 선다)
+    park_min_route_sec: float = 3.0  # 통로에 들어선 뒤 이 시간이 지나야 끝 선을 인정한다 (입구의 비스듬한 선 오인 방지)
     park_turn_deg: float = 180.0     # 정지 후 제자리 회전 각도. 0 이면 돌지 않고 바로 주차 완료
     park_turn_w: float = 0.8         # 회전 속도 rad/s. 시간으로 도는 것이라 덜/더 돌면 park_turn_deg 를 조절
     # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)
