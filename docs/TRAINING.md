@@ -68,7 +68,7 @@ python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pink
 | `mean_ms` | 70ms 이하 (15fps 를 따라가려면) |
 | `out/cmp/yolo/*.jpg` 눈으로 | 좌우 색이 바뀐 그림이 없을 것 |
 
-그다음 시뮬레이터가 아니라 실제로: `scripts/drive.sh pinky1 23 yolo`, 대시보드에서 `conf` 를 0.3~0.5 사이로 조정.
+그다음 시뮬레이터가 아니라 실제로: `scripts/drive.sh pinky1 24 yolo`, 대시보드에서 `conf` 를 0.3~0.5 사이로 조정.
 
 ## 5. 더 잘 잡히게 (수업 Appendix 5 의 6-5 와 같은 순서)
 

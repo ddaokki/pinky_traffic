@@ -1,8 +1,8 @@
 #!/bin/bash
 # PC 에서 로봇 한 대 몫의 주행 노드 실행.
 #   scripts/drive.sh <로봇이름> <ROS_DOMAIN_ID> [hsv|yolo] [가중치]
-#   예) scripts/drive.sh pinky1 23            # 색(HSV)으로 주행
-#       scripts/drive.sh pinky1 23 yolo       # models/best.pt 로 주행
+#   예) scripts/drive.sh pinky1 24            # 색(HSV)으로 주행
+#       scripts/drive.sh pinky1 24 yolo       # models/best.pt 로 주행
 set -e
 WS="$(cd "$(dirname "$0")/.." && pwd)"
 ROBOT="${1:?로봇 이름 (예: pinky1)}"

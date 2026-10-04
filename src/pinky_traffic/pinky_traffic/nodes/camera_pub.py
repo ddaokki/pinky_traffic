@@ -4,10 +4,10 @@ bringup_robot.launch.xml 은 카메라를 발행하지 않는다. 그래서 로�
 WiFi 로 보내므로 원본(Image) 대신 JPEG(CompressedImage) 로 보낸다
 (320x240 원본 = 230KB/장, JPEG = 10~20KB/장).
 
-  ros2 run pinky_traffic camera_pub --ros-args -p width:=320 -p height:=240 -p fps:=15
+  ros2 run pinky_traffic camera_pub --ros-args -p width:=320 -p height:=240 -p fps:=15.0
 
 워크스페이스 없이 파일 하나만 복사해서도 실행된다:
-  python3 camera_pub.py --ros-args -p fps:=15
+  python3 camera_pub.py --ros-args -p fps:=15.0
 
 backend: auto(기본) -> picamera2 -> pinkylib -> opencv 순서로 시도
 """

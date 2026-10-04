@@ -38,7 +38,7 @@ scripts/robot_install.sh 192.168.4.1
 # 로봇 (ssh pinky@192.168.4.1) — 터미널 2개
 echo $ROS_DOMAIN_ID                                   # 이 값을 PC 에서도 쓴다
 ros2 launch pinky_bringup bringup_robot.launch.xml
-python3 ~/camera_pub.py --ros-args -p width:=320 -p height:=240 -p fps:=15
+python3 ~/camera_pub.py --ros-args -p width:=320 -p height:=240 -p fps:=15.0 -p flip:=true   # pinky1 은 영상이 뒤집혀 나와 flip 필요
 ```
 
 ```bash
@@ -51,7 +51,8 @@ ros2 run rqt_image_view rqt_image_view                # 영상 확인
 
 - 영상 색이 이상하면(빨강↔파랑) `-p swap_rb:=true`, 뒤집혀 있으면 `-p flip:=true`.
 - `camera_pub` 이 카메라를 못 열면: 주피터 노트북 커널이 카메라를 잡고 있는지 확인 (Shut Down All).
-- 여럿이 같은 공유기를 쓰면 느려진다. 수업 자료대로 필요 없는 영상 토픽을 끄고, 그래도 느리면 fps 를 10 으로.
+- 여럿이 같은 공유기를 쓰면 느려진다. 수업 자료대로 필요 없는 영상 토픽을 끄고, 그래도 느리면 fps 를 10.0 으로.
+- fps 는 꼭 소수점으로 쓴다 (`fps:=15` 처럼 정수로 주면 노드가 죽는다).
 
 ## 3. 색 맞추기 (5분)
 

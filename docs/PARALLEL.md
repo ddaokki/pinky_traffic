@@ -26,7 +26,7 @@ claude -n 인식        # -n 은 세션 이름. /resume 목록과 터미널 제�
 담당 파일: core/perception.py, core/detectors.py, tools/, data/, models/, docs/TRAINING.md,
 그리고 config/field.yaml 의 lane_hsv_lo / lane_hsv_hi 두 줄만. 다른 파일은 고치지 마.
 
-현장: 로봇 1대(pinky1, 192.168.0.1). 차선도 횡단보도도 흰 테이프(같은 색 모드, 줄무늬로 횡단보도 구분).
+현장: 로봇 1대(pinky1, 192.168.4.1, 도메인 24). 차선도 횡단보도도 흰 테이프(같은 색 모드, 줄무늬로 횡단보도 구분).
 
 지금 할 일:
 1) 사진 모으는 명령(capture)을 알려 줘. 모이면 data/raw 에 있어.
@@ -46,7 +46,7 @@ claude -n 인식        # -n 은 세션 이름. /resume 목록과 터미널 제�
 담당 파일: core/controller.py, core/driver.py, nodes/, config/ (lane_hsv 두 줄은 학습 세션 담당), docs/RUNBOOK.md.
 다른 파일은 고치지 마.
 
-현장: 로봇 1대(pinky1, 192.168.0.1, 도메인 23). 차선도 횡단보도도 흰 테이프.
+현장: 로봇 1대(pinky1, 192.168.4.1, 도메인 24). 차선도 횡단보도도 흰 테이프.
 대시보드(localhost:8088)와 lane_driver 는 내가 띄워. 로봇을 움직이는 건 내가 대시보드로 해. 너는 직접 START 하지 마.
 
 지금 할 일:
@@ -64,7 +64,7 @@ claude -n 인식        # -n 은 세션 이름. /resume 목록과 터미널 제�
 너는 pinky_traffic 의 모니터링·기록 담당이야. CLAUDE.md 와 docs/TESTCASES.md 를 먼저 읽어.
 담당 파일: dashboard/, docs/TESTCASES.md, docs/PROGRESS.md. 다른 파일은 고치지 마. 로봇을 움직이는 명령은 실행하지 마.
 
-현장: 로봇 1대(pinky1, 192.168.0.1). 차선도 횡단보도도 흰 테이프. 오늘은 1대 테스트만 한다.
+현장: 로봇 1대(pinky1, 192.168.4.1, 도메인 24). 차선도 횡단보도도 흰 테이프. 오늘은 1대 테스트만 한다.
 
 지금 할 일:
 1) 내가 "봐 줘" 하면 runs/ 최신 폴더의 pinky1.csv 를 읽어 한 바퀴 요약을 표로 줘:

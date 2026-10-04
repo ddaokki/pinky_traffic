@@ -21,7 +21,7 @@ Pinky Pro(ROS2 Jazzy, Ubuntu 24.04)가 테이프 차선을 따라 돌고 횡단�
 ## 용어
 
 - **색 주행(HSV)**: 카메라 그림에서 테이프 색 범위(`config/field.yaml` 의 HSV 값)에 맞는 픽셀을 차선으로 보고 따라가는 방식. 학습 없이 바로 된다. 기본값.
-- **YOLO 주행**: 학습한 `models/best.pt` 가 차선·횡단보도를 찾는 방식. `scripts/drive.sh pinky1 23 yolo`.
+- **YOLO 주행**: 학습한 `models/best.pt` 가 차선·횡단보도를 찾는 방식. `scripts/drive.sh pinky1 24 yolo`.
 - `models/synth_best.pt`: 합성(가짜 그림) 데이터로 미리 학습한 출발점 (mask mAP50 0.979). 실제 트랙용 `best.pt` 는 현장 사진으로 만든다.
 
 ## 구조
@@ -40,7 +40,7 @@ Pinky Pro(ROS2 Jazzy, Ubuntu 24.04)가 테이프 차선을 따라 돌고 횡단�
 - `source scripts/env.sh [도메인번호]` — ROS2 + 워크스페이스 + PYTHONPATH
 - 시스템 파이썬: opencv 4.6, numpy 1.26, rclpy. YOLO(ultralytics, torch CPU)는 `~/venv/yolo` 에만 있다.
 - GPU 없음 (Intel Iris Xe). 학습은 CPU 또는 Colab.
-- 로봇: pinky1 = 192.168.0.1 (2026-10-03 현장 1대 테스트), pinky2 = 192.168.0.7 (ssh pinky@IP, 비밀번호는 수업 자료/사용자에게). 도메인 별칭 ros23 / ros24.
+- 로봇: pinky1 = 192.168.4.1 · 도메인 24 (2026-10-03 현장 확인 값), pinky2 = 192.168.0.7 (ssh pinky@IP, 비밀번호는 수업 자료/사용자에게). 도메인 별칭 ros23 / ros24.
 - 2대는 ROS_DOMAIN_ID 가 달라 서로 토픽이 안 보인다. 로봇 간 약속은 대시보드 서버(HTTP)로 한다.
 
 ## 병렬 작업 시 파일 담당 (겹치지 않게)
