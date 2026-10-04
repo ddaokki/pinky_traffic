@@ -18,6 +18,10 @@ source /opt/ros/jazzy/setup.bash
 [ -f "$HOME/pinky/install/setup.bash" ] && source "$HOME/pinky/install/setup.bash"
 source "$WS/install/setup.bash"
 export ROS_DOMAIN_ID="$DOMAIN"
+# 학원 와이파이처럼 로봇을 자동으로 못 찾는 망에서는 로봇 주소를 직접 알려 준다 (세미콜론으로 구분).
+# 주소가 바뀌면: PINKY_PEERS="주소1;주소2" scripts/drive.sh ...   자동으로 찾는 망이면: PINKY_PEERS="" scripts/drive.sh ...
+PINKY_PEERS="${PINKY_PEERS-192.168.129.199;192.168.129.200}"
+[ -n "$PINKY_PEERS" ] && export ROS_STATIC_PEERS="$PINKY_PEERS"
 if [ "$BACKEND" = "yolo" ]; then
   # ultralytics 는 ~/venv/yolo 에 있다
   export PYTHONPATH="$HOME/venv/yolo/lib/python3.12/site-packages:$PYTHONPATH"
