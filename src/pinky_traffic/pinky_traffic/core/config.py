@@ -64,6 +64,18 @@ class Config:
     resource: str = 'crosswalk'
     dashboard_url: str = 'http://127.0.0.1:8088'
 
+    # ---------- 2026-10-04 맵: 1차선은 파란 선 따라 유턴해 2차선으로 돌아오고, 2차선은 초록 칸으로 빠진다 ----------
+    # 0 = 안 씀(기존 동작) | 1 = 1차선(왼쪽) 로봇 | 2 = 2차선(오른쪽) 로봇. 실행할 때 로봇마다 준다 (drive.sh 5번째 값)
+    lane_role: int = 0
+    green_hsv_lo: List[int] = field(default_factory=lambda: [40, 80, 50])
+    green_hsv_hi: List[int] = field(default_factory=lambda: [90, 255, 255])
+    junction_resource: str = 'junction'   # 유턴 구간 + 초록 칸 입구. 2대일 때 한 대씩만 지나간다 (use_coordinator)
+    junction_clear_sec: float = 8.0  # 1차선 로봇: 파란 선이 끝난 뒤 이 시간 동안 오른쪽 선만 따라가고(칸 입구를 지나침) 그 뒤 구간을 내준다
+    exit_wait_sec: float = 2.0       # 2차선 로봇: 칸에서 돌아선 뒤 최소 이만큼 기다렸다가 나간다
+    exit_follow_sec: float = 8.0     # 2차선 로봇: 칸에서 나올 때 이 시간 동안 왼쪽 선만 따라간다 (2차선으로 좌회전)
+    side_spin_w: float = 0.6         # 한쪽 선만 따라가는 중에 그 선을 놓치면 그쪽으로 제자리 회전하며 찾는다 (rad/s)
+    side_search_sec: float = 6.0     # 그렇게 찾는 최대 시간
+
     # ---------- 주차 통로 (흰 차선 끝에서 빨강/파랑 테이프로 이어지는 길) ----------
     route_color: str = ''            # '' (안 씀) | 'red' | 'blue' : 이 로봇이 따라갈 통로 색
     red_hsv_lo: List[int] = field(default_factory=lambda: [0, 70, 40])       # 빨강은 H 가 0 과 179 양 끝에

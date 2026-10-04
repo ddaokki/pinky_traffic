@@ -66,6 +66,7 @@ class Driver:
             self.autostart = False
             self.controller.start(now)
         self._apply_pending(now)
+        self.detector.prefer = self.controller.prefer      # 갈림길에서 어느 쪽 선을 따라갈지
         p, masks, small = self.detector.detect(frame)
         cmd = self.controller.step(p, front_m, now)
         if self._t_prev is not None and now > self._t_prev:
@@ -83,7 +84,8 @@ class Driver:
                  'ms': round(p.ms, 1), 'backend': self.cfg.backend, 'reason': cmd.reason,
                  'crossings': self.controller.crossings,
                  'route': self.controller.in_route, 'route_seen': p.route_seen,
-                 'route_end_y': round(p.route_end_y, 2), 'led': list(self.controller.led)}
+                 'route_end_y': round(p.route_end_y, 2), 'role': self.cfg.lane_role,
+                 'prefer': self.controller.prefer, 'uturn': p.uturn_seen, 'zone_y': round(p.zone_y, 2), 'led': list(self.controller.led)}
         text = f'{self.name} {cmd.state} v={cmd.v:.2f} w={cmd.w:+.2f}'
         self.debug = draw_debug(small, p, masks, text)
         if self.link:

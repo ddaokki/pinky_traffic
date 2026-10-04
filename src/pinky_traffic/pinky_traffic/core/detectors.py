@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from .perception import (LaneMemory, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
-                         remove_wall_base, route_end_bar)
+                         remove_wall_base, route_end_bar, center_line_perception)
 
 
 class HsvDetector:
@@ -19,6 +19,10 @@ class HsvDetector:
         self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         self.route_seen = self.route_near = False
         self.route_end_y = 0.0
+        self.prefer = ''                 # 'left' | 'right' : 제어기가 정한다. 그쪽 선만 보고 따라간다 (갈림길)
+        self.uturn = None                # 파란 유턴 선 마스크 (lane_role 일 때)
+        self.uturn_near = False
+        self.zone_y = 0.0
 
     def color_mask(self, frame, lo, hi):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -97,11 +101,40 @@ class HsvDetector:
             found = stripes_are_crosswalk(boxes, cfg, frame.shape[0])
         return {'left': left, 'right': right, 'crosswalk': crosswalk}, found
 
+    def role_marks(self, frame):
+        """lane_role 맵의 색 표시: 파란 유턴 선, 초록 칸 끝 선."""
+        cfg = self.cfg
+        h, w = frame.shape[:2]
+        self.uturn, self.uturn_near, self.zone_y = None, False, 0.0
+        if not cfg.lane_role:
+            return
+        blue = self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
+        if cv2.countNonZero(blue) >= cfg.route_min_area * w * h:
+            self.uturn = blue
+            self.uturn_near = np.flatnonzero(blue.any(axis=1)).max() >= cfg.route_only_row * (h - 1)
+        green = self.color_mask(frame, cfg.green_hsv_lo, cfg.green_hsv_hi)
+        if cv2.countNonZero(green) >= cfg.route_min_area * w * h:
+            self.zone_y = float(np.flatnonzero(green.any(axis=1)).max() / (h - 1))
+
     def detect(self, frame):
         t0 = time.perf_counter()
         frame = resize_to(frame, self.cfg.proc_width)
         masks, found = self.masks(frame)
-        p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
+        self.role_marks(frame)
+        if self.cfg.lane_role == 1 and self.uturn_near:
+            # 1차선 로봇: 파란 선이 발밑까지 오면 흰 선 대신 파란 선을 가운데 두고 따라간다
+            p = center_line_perception(self.uturn, self.cfg)
+            masks = {'left': None, 'right': None, 'crosswalk': self.uturn}
+        elif self.prefer:
+            # 갈림길: 한쪽 선만 보고 (기억해 둔 차선 폭의 절반만큼 떨어져) 따라간다
+            keep = masks[self.prefer]
+            masks = {'left': keep if self.prefer == 'left' else None,
+                     'right': keep if self.prefer == 'right' else None, 'crosswalk': None}
+            p = lane_from_masks(masks['left'], masks['right'], None, self.cfg, self.memory, False)
+        else:
+            p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
+        p.uturn_seen, p.uturn_near = self.uturn is not None, bool(self.uturn_near)
+        p.zone_seen, p.zone_y = self.zone_y > 0, self.zone_y
         p.route_seen, p.route_near = self.route_seen, bool(self.route_near)
         p.route_end, p.route_end_y = self.route_end_y > 0, self.route_end_y
         p.ms = (time.perf_counter() - t0) * 1000

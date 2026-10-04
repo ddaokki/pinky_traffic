@@ -20,10 +20,12 @@ LOST = 'lost'
 ESTOP = 'estop'
 PARK_TURN = 'park_turn'            # 칸 끝에서 제자리 회전 (나갈 방향으로 돌아선다)
 PARKED = 'parked'
+WAIT_JUNCTION = 'wait_junction'    # 유턴 구간이 비기를 기다린다 (2대)
+WAIT_EXIT = 'wait_exit'            # 초록 칸에서 돌아선 뒤, 나가도 될 때까지 기다린다
 
 # LED (r, g, b): 달리는 중 초록, 서 있으면 빨강, 주차 통로 안에서는 통로 색, 주차 완료 초록
 LED_GREEN, LED_RED, LED_BLUE = (0, 255, 0), (255, 0, 0), (0, 0, 255)
-STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP)
+STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP, WAIT_JUNCTION, WAIT_EXIT)
 
 
 def led_color(state, in_route=False, route_color=''):
@@ -96,6 +98,79 @@ class LaneController:
         self.t_route = 0.0                  # 통로에 들어선 시각
         self.end_hits = 0                   # 칸 끝 선이 정지 행까지 온 연속 프레임 수
         self.events = []                    # (t, 문자열) 최근 이벤트
+        self._reset_role()
+
+    def _reset_role(self):
+        """lane_role 맵(파란 유턴 / 초록 칸)의 진행 상태."""
+        self.prefer = ''                    # 'left' | 'right' : 그쪽 선만 따라간다 (검출기에 전달)
+        self.junction_held = False          # 유턴 구간 락을 쥐고 있다
+        self.uturn_started = False          # 1차선: 파란 선에 올라탔다
+        self.uturn_done = False             # 1차선: 파란 선이 끝났다 (2차선으로 돌아가는 중)
+        self.pocket_mode = False            # 2차선: 초록 칸으로 빠지는 중
+        self.pocket_parked = False          # 2차선: 칸에서 돌아섰다
+        self.exiting = False                # 2차선: 칸에서 나오는 중
+        self.t_blue = 0.0
+        self.t_mode = 0.0
+        self.zone_hits = 0
+
+    def _junction(self, want):
+        """유턴 구간 락. want=True 는 요청/유지(허가 여부를 돌려준다), False 는 반납. 1대일 때는 항상 허가."""
+        cfg = self.cfg
+        if want:
+            self.junction_held = bool(self.lock.request(cfg.junction_resource)) if cfg.use_coordinator else True
+            return self.junction_held
+        if self.junction_held and cfg.use_coordinator:
+            self.lock.release(cfg.junction_resource)
+        self.junction_held = False
+        return True
+
+    def _role_step(self, p, now):
+        """lane_role 에 따른 판단. 멈춰 기다려야 하면 Command 를, 아니면 None 을 돌려준다.
+
+        1차선: 파란 선을 만나면 구간 락을 얻고 파란 선을 따라 유턴 -> 파란 선이 끝나면 오른쪽 선만 따라
+               (초록 칸 입구를 지나쳐) 2차선으로 돌아간다 -> junction_clear_sec 뒤 락 반납.
+        2차선: 출발부터 락을 쥔다(이 로봇이 칸에 들어가기 전에는 1차선 로봇이 유턴하면 안 된다. 2차선에서 마주친다)
+               -> 파란 선이 보이면 오른쪽 선만 따라 칸으로 우회전 -> 초록 선 앞에서 정지, 제자리 180도
+               -> 락 반납 -> 락을 다시 얻으면(1차선 로봇이 지나간 뒤) 왼쪽 선만 따라 나와 2차선으로 돌아간다.
+        """
+        cfg = self.cfg
+        if cfg.lane_role == 1:
+            if p.uturn_near and not self.uturn_started:
+                if not self._junction(True):
+                    return Command(0.0, 0.0, WAIT_JUNCTION, 'junction busy')
+                self.uturn_started, self.t_blue = True, now
+                self.events.append((now, 'uturn start'))
+            if self.uturn_started and not self.uturn_done:
+                self._junction(True)
+                if p.uturn_seen:
+                    self.t_blue = now
+                elif now - self.t_blue > 1.0:
+                    self.uturn_done, self.prefer, self.t_mode = True, 'right', now
+                    self.events.append((now, 'uturn done'))
+            elif self.uturn_done and self.junction_held:
+                self._junction(True)
+                if now - self.t_mode >= cfg.junction_clear_sec:
+                    self.prefer = ''
+                    self._junction(False)
+        elif cfg.lane_role == 2:
+            if not self.pocket_parked:
+                if not self._junction(True):
+                    return Command(0.0, 0.0, WAIT_JUNCTION, 'junction busy')
+                if p.uturn_seen and not self.pocket_mode:
+                    self.pocket_mode, self.prefer = True, 'right'
+                    self.events.append((now, 'pocket: follow right'))
+                hit = self.pocket_mode and p.zone_seen and p.zone_y >= cfg.park_line_row
+                self.zone_hits = self.zone_hits + 1 if hit else 0
+                if self.zone_hits >= 2:
+                    self.prefer = ''
+                    self._go(PARK_TURN, now, f'green y={p.zone_y:.2f}')
+                    return Command(0.0, 0.0, PARK_TURN)
+            elif self.exiting:
+                self._junction(True)
+                if now - self.t_mode >= cfg.exit_follow_sec:
+                    self.exiting, self.prefer = False, ''
+                    self._junction(False)
+        return None
 
     @property
     def led(self):
@@ -108,15 +183,20 @@ class LaneController:
             self.t_seen = None
             if self.state != LOST:
                 self.in_route = False
+                self._junction(False)
+                self._reset_role()
             self._go(LANE_FOLLOW, now, 'start')
 
     def stop(self, now=0.0):
         self._release()
+        self._junction(False)
+        self._reset_role()
         self.in_route = False
         self._go(IDLE, now, 'stop')
 
     def estop(self, now=0.0):
         self._release()
+        self._junction(False)
         self._go(ESTOP, now, 'estop')
 
     # ----- 내부 -----
@@ -151,9 +231,26 @@ class LaneController:
         if self.state == PARK_TURN:
             # 각도 센서 없이 시간으로 돈다: 각도 / 회전 속도
             if now - self.t_state >= math.radians(cfg.park_turn_deg) / max(0.1, cfg.park_turn_w):
+                if cfg.lane_role == 2:
+                    self.pocket_mode, self.pocket_parked = False, True
+                    self._junction(False)             # 칸 안에 들어왔다 -> 1차선 로봇이 유턴해도 된다
+                    self._go(WAIT_EXIT, now, 'turned')
+                    return Command(0.0, 0.0, WAIT_EXIT)
                 self._go(PARKED, now, 'turned')
                 return Command(0.0, 0.0, PARKED)
             return Command(0.0, cfg.park_turn_w, PARK_TURN)
+        if self.state == WAIT_EXIT:
+            if now - self.t_state < cfg.exit_wait_sec or not self._junction(True):
+                return Command(0.0, 0.0, WAIT_EXIT)
+            self.exiting, self.prefer, self.t_mode, self.t_seen = True, 'left', now, now
+            self.pid.reset()
+            self._go(LANE_FOLLOW, now, 'exit pocket')
+        if cfg.lane_role:
+            wait = self._role_step(p, now)
+            if wait is not None:
+                return wait
+            if self.prefer or self.pocket_mode or (self.uturn_started and not self.uturn_done):
+                p.crosswalk = False                   # 유턴 구간·칸 안에는 횡단보도가 없다 (가로선 오검출 방지)
 
         # ---- 주차 통로: 들어서면 기억하고, 칸 끝 벽이 park_stop_m 안에 오면 주차 완료 ----
         if p.route_near and self.state != BLOCKED:
@@ -171,7 +268,9 @@ class LaneController:
             reason = f'front={front_m:.2f}' if at_wall else f'end line y={p.route_end_y:.2f}'
             self._go(PARK_TURN if cfg.park_turn_deg > 0 else PARKED, now, reason)
             return Command(0.0, 0.0, self.state)
-        stop_m = cfg.park_stop_m if self.in_route else cfg.obstacle_stop_m
+        # 유턴 구간은 벽이 가깝다 (통로 안과 같이 더 가까이까지 허용)
+        in_uturn = self.uturn_started and not self.uturn_done
+        stop_m = cfg.park_stop_m if self.in_route or in_uturn else cfg.obstacle_stop_m
 
         # ---- 전방 장애물 (라이다 또는 yolo 'robot') : 어떤 주행 상태보다 우선 ----
         blocked = front_m is not None and front_m < stop_m
@@ -211,6 +310,10 @@ class LaneController:
                 return Command(cfg.v_min, self.last_w * 0.5, CROSSING, 'blind')
             if since <= cfg.lost_grace_sec:
                 return Command(cfg.v_min, self.last_w, self.state, 'grace')
+            if self.prefer and since <= cfg.side_search_sec:
+                # 따라가던 쪽 선을 놓쳤다 (선이 그쪽으로 급하게 꺾였다) -> 그쪽으로 제자리 회전하며 찾는다
+                w = -cfg.side_spin_w if self.prefer == 'right' else cfg.side_spin_w
+                return Command(0.0, w, self.state, f'search {self.prefer}')
             if since > cfg.lost_timeout_sec or self.t_seen is None:
                 if self.state != LOST:
                     self._release()
