@@ -219,3 +219,13 @@ def test_dashboard_lane_button_sets_role_and_stops():
     d.command('lane2')
     d.process(lanes(floor()), 1.0, 0.2)
     assert d.cfg.lane_role == 2 and d.controller.state == 'idle' and d.state['role'] == 2
+
+
+def test_in_pocket_robot_heads_for_the_green_line():
+    img = lanes(floor())
+    cv2.line(img, (95, 150), (225, 150), WHITE, 8)                        # 칸 끝을 막은 흰 선 (ㄷ자)
+    cv2.line(img, (190, 162), (240, 162), GREEN, 10)                      # 초록 선이 오른쪽에 보인다
+    det = HsvDetector(Config(lane_role=2))
+    det.follow_zone = True
+    p, _, _ = det.detect(img)
+    assert p.ok and p.zone_seen and 0.2 < p.offset < 0.5

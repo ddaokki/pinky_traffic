@@ -8,7 +8,7 @@ import time
 import cv2
 import numpy as np
 
-from .perception import (LaneMemory, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
+from .perception import (LaneMemory, Perception, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
                          remove_wall_base, route_end_bar, center_line_perception)
 
 
@@ -21,6 +21,8 @@ class HsvDetector:
         self.route_end_y = 0.0
         self.prefer = ''                 # 'left' | 'right' : 제어기가 정한다. 그쪽 선만 보고 따라간다 (갈림길)
         self.uturn = None                # 파란 유턴 선 마스크 (lane_role 일 때)
+        self.follow_zone = False         # 제어기가 정한다: 칸 안에서는 초록 선 가운데를 보고 간다
+        self.zone_x = 0.0                # 초록 선 가운데의 가로 위치 (-1 왼쪽 .. 1 오른쪽)
         self.follow_blue = False         # 제어기가 정한다: 2차선 로봇도 잠깐 파란 선을 따라간다 (칸 입구까지)
         self.uturn_near = False
         self.zone_y = 0.0
@@ -116,6 +118,7 @@ class HsvDetector:
         green = self.color_mask(frame, cfg.green_hsv_lo, cfg.green_hsv_hi)
         if cv2.countNonZero(green) >= cfg.route_min_area * w * h:
             self.zone_y = float(np.flatnonzero(green.any(axis=1)).max() / (h - 1))
+            self.zone_x = float((np.nonzero(green)[1].mean() - w / 2.0) / (w / 2.0))
 
     def detect(self, frame):
         t0 = time.perf_counter()
@@ -126,6 +129,11 @@ class HsvDetector:
             # 1차선 로봇: 파란 선이 발밑까지 오면 흰 선 대신 파란 선을 가운데 두고 따라간다
             p = center_line_perception(self.uturn, self.cfg)
             masks = {'left': None, 'right': None, 'crosswalk': self.uturn}
+        elif self.follow_zone and self.zone_y > 0:
+            # 칸 안: 칸 끝은 흰 선이 ㄷ자로 막혀 있어 좌우 선 구분이 틀어진다 (2026-10-04: 초록을 보고도 왼쪽으로 빠져나감).
+            # 초록 선 가운데를 향해 간다
+            p = Perception(size=(frame.shape[1], frame.shape[0]), ok=True, offset=float(np.clip(self.zone_x, -1.5, 1.5)))
+            p.target = (int((self.zone_x + 1) * frame.shape[1] / 2), int(self.zone_y * (frame.shape[0] - 1)))
         elif self.prefer:
             # 갈림길: 한쪽 선만 보고 (기억해 둔 차선 폭의 절반만큼 떨어져) 따라간다
             keep = masks[self.prefer]
