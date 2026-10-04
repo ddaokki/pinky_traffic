@@ -209,3 +209,13 @@ def test_stripes_taken_as_left_line_do_not_shrink_lane_width():
     det.detect(img)
     for i, wdt in det.memory.width.items():
         assert wdt > 0.85 * learned[i]
+
+
+def test_dashboard_lane_button_sets_role_and_stops():
+    from pinky_traffic.core.driver import Driver
+    d = Driver(Config(), use_dashboard=False, autostart=True)
+    d.process(lanes(floor()), 1.0, 0.1)
+    assert d.controller.state == LANE_FOLLOW and d.cfg.lane_role == 0
+    d.command('lane2')
+    d.process(lanes(floor()), 1.0, 0.2)
+    assert d.cfg.lane_role == 2 and d.controller.state == 'idle' and d.state['role'] == 2

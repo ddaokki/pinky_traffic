@@ -26,6 +26,7 @@
   .badge.lane_follow, .badge.crossing { background:#1f4d2b; } .badge.stop_at_crosswalk, .badge.approach_crosswalk, .badge.blocked { background:#5a4410; }
   .badge.lost, .badge.estop { background:#8e1c18; }
   .badge.parked { background:#1d4f8f; }
+  .lane span { opacity:.7; font-size:12px; align-self:center; } .lane button { padding:4px 10px; font-size:12px; } .lane button.on { background:#1d4f8f; border-color:var(--accent); font-weight:700; }
   .robot img { width:100%; image-rendering:pixelated; background:#000; border-radius:4px; display:block; aspect-ratio:4/3; }
   .kv { display:grid; grid-template-columns: repeat(4, 1fr); gap:4px 8px; margin:8px 0; font-variant-numeric:tabular-nums; }
   .kv div span { display:block; color:var(--dim); font-size:11px; }
@@ -87,11 +88,13 @@ function card(name) {
   el.className = 'robot';
   el.innerHTML = `<div class="head"><span class="name"></span><span class="badge"></span></div>
     <img alt="디버그 영상"><div class="kv"></div><canvas width="600" height="120"></canvas>
-    <div class="row"><button class="go">▶ START</button><button class="s">■ STOP</button><button class="estop">비상정지</button></div>`;
+    <div class="row"><button class="go">▶ START</button><button class="s">■ STOP</button><button class="estop">비상정지</button></div>
+    <div class="row lane"><span>놓은 차선</span><button class="l1">1차선 (파란 선 유턴)</button><button class="l2">2차선 (초록 칸)</button><button class="l0">역할 없음</button></div>`;
   el.querySelector('.name').textContent = name;
   el.querySelector('.go').onclick = () => cmd(name, 'start');
   el.querySelector('.s').onclick = () => cmd(name, 'stop');
   el.querySelector('.estop').onclick = () => cmd(name, 'estop');
+  for (const n of [0, 1, 2]) el.querySelector('.l' + n).onclick = () => cmd(name, 'lane' + n);
   $('robots').appendChild(el);
   return cards[name] = el;
 }
@@ -118,11 +121,12 @@ function render(s) {
     const badge = el.querySelector('.badge');
     badge.textContent = r.age > 2 ? `연결 끊김 ${f(r.age,0)}s` : (st.state || '?');
     badge.className = 'badge ' + (st.state || '');
+    for (const n of [0, 1, 2]) el.querySelector('.l' + n).classList.toggle('on', (st.role || 0) === n);
     if (r.has_frame) el.querySelector('img').src = `/frame/${name}.jpg?t=${Date.now()}`;
     el.querySelector('.kv').innerHTML = [
       ['v m/s', f(st.v)], ['w rad/s', f(st.w)], ['offset', f(st.offset)], ['fps', f(st.fps,1)],
       ['좌/우', (st.left?'●':'○') + ' ' + (st.right?'●':'○')], ['횡단보도', st.crosswalk ? '보임 ' + f(st.crosswalk_y) : '–'],
-      ['전방 m', f(st.front)], ['인식 ms', f(st.ms,0) + ' ' + (st.backend||'')],
+      ['전방 m', f(st.front)], ['이유', st.reason || '–'], ['인식 ms', f(st.ms,0) + ' ' + (st.backend||'')],
     ].map(([k,v]) => `<div><span>${k}</span>${v}</div>`).join('');
     drawHistory(el.querySelector('canvas'), r.history || []);
   }
