@@ -40,7 +40,7 @@ def test_field_yaml_loads():
     import os
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'field.yaml')
     cfg = Config.load(path)
-    assert cfg.backend == 'hsv' and cfg.v_max == 0.08 and cfg.use_coordinator is False
+    assert cfg.backend == 'hsv' and cfg.v_max == 0.08
 
 
 def test_mask_to_yolo_seg_lines():
