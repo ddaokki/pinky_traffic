@@ -3,8 +3,8 @@
 #   scripts/drive.sh <로봇이름> <ROS_DOMAIN_ID> [hsv|yolo] [가중치] [차선]
 #   예) scripts/drive.sh pinky1 24            # 색(HSV)으로 주행
 #       scripts/drive.sh pinky1 24 yolo       # models/best.pt 로 주행
-#       scripts/drive.sh pinky1 24 hsv "" 1   # 1차선(왼쪽)에 놓은 로봇: 파란 선 따라 유턴해 2차선으로 돌아온다
-#       scripts/drive.sh pinky2 23 hsv "" 2   # 2차선(오른쪽)에 놓은 로봇: 초록 칸으로 빠졌다가 뒤따라 나온다
+#       scripts/drive.sh pinky1 24 hsv "" 1   # 1차선에 놓은 로봇: 표지판에서 우 -> 우(유턴) -> 직진
+#       scripts/drive.sh pinky2 23 hsv "" 2   # 2차선에 놓은 로봇: 상대가 오면 초록 칸으로 비켰다가 우 -> 좌 -> 좌, 아니면 직진 -> 좌 -> 좌
 #   LANE=1 scripts/drive.sh pinky1 24  처럼 줘도 된다. 로봇은 어느 쪽에 놓아도 되고, 놓은 차선 번호만 맞게 준다.
 set -e
 WS="$(cd "$(dirname "$0")/.." && pwd)"

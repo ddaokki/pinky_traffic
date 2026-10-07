@@ -114,11 +114,16 @@ scripts/robot_install.sh 192.168.0.7
 
 # PC: 터미널 3개
 scripts/dashboard.sh
-scripts/drive.sh pinky1 24 yolo
-scripts/drive.sh pinky2 23 yolo
+scripts/drive.sh pinky1 24 yolo "" 1    # 1차선에 놓은 로봇
+scripts/drive.sh pinky2 23 yolo "" 2    # 2차선에 놓은 로봇
 ```
+(`scripts/start_all.sh` 로 한 번에 켜도 된다. 그때는 대시보드의 `1차선` / `2차선` 버튼으로 차선을 정한다.)
 
-- 대시보드에서 `횡단보도 한 대씩 통과` 를 켠다. 락 표시에 "통과 중 / 대기" 가 보인다.
+- 대시보드에서 `횡단보도 한 대씩 통과` 를 켠다 (`use_coordinator`, field.yaml 기본 켜짐). 깃발과 구간 락이 이걸로 돈다.
+  락 칸에 "깃발 oncoming: pinky1 (오는 중)", "junction: 통과 중 …" 이 보인다.
+- 표지판 경로(우/좌/직진 순서)는 field.yaml 의 `plan_lane1` `plan_lane2` `plan_lane2_pocket` `plan_lane2_exit`.
+  표지판에서 서는 위치·회전 각도는 대시보드 슬라이더 `sign_stop_row` `sign_advance_m` `sign_turn_deg`.
+- 두 대를 **같이 출발**시킨다. 2차선 로봇이 먼저 직우 표지판에 닿으면 깃발이 없어 바로 유턴한다 (기다리는 시간 `pocket_decide_sec`).
 - 두 로봇은 도메인이 달라 ROS 로는 서로 안 보인다. 추돌 방지는 각자의 라이다(`/scan`) 전방 거리다.
   라이다 없는 로봇이면 뒤차의 `v_max` 를 앞차보다 낮게 두고 반 바퀴 간격으로 출발시킨다.
 - 그룹 3 테스트케이스를 채운다.
