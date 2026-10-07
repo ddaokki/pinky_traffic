@@ -66,13 +66,13 @@ class DatasetWriter:
 
 def draw_label(image, lines):
     """라벨을 그림 위에 그려 눈으로 검수."""
-    colors = [(255, 120, 0), (0, 160, 255), (0, 255, 255), (255, 0, 255)]
+    colors = [(255, 120, 0), (0, 160, 255), (0, 255, 255), (255, 0, 255), (60, 200, 60)]
     out = image.copy()
     h, w = out.shape[:2]
     for line in lines:
         parts = line.split()
         pts = [(int(float(x) * w), int(float(y) * h)) for x, y in zip(parts[1::2], parts[2::2])]
         import numpy as np
-        cv2.polylines(out, [np.array(pts, np.int32)], True, colors[int(parts[0]) % 4], 2)
-        cv2.putText(out, CLASSES[int(parts[0])], pts[0], cv2.FONT_HERSHEY_SIMPLEX, 0.4, colors[int(parts[0]) % 4], 1)
+        cv2.polylines(out, [np.array(pts, np.int32)], True, colors[int(parts[0]) % len(colors)], 2)
+        cv2.putText(out, CLASSES[int(parts[0])], pts[0], cv2.FONT_HERSHEY_SIMPLEX, 0.4, colors[int(parts[0]) % len(colors)], 1)
     return out

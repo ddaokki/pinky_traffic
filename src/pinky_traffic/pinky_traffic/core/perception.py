@@ -11,7 +11,8 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 
-CLASSES = ['left', 'right', 'crosswalk', 'uturn']   # YOLO 클래스 순서 (data.yaml 의 names 와 같아야 한다). uturn = 파란 유턴 표시
+CLASSES = ['left', 'right', 'crosswalk', 'turn', 'straight_right']   # YOLO 클래스 순서 (data.yaml 의 names 와 같아야 한다)
+SIGNS = ('turn', 'straight_right')   # 바닥의 파란 양방향 표지판: 우회전 양방향 / 직우 양방향
 
 
 @dataclass
@@ -32,8 +33,7 @@ class Perception:
     ms: float = 0.0                  # 처리 시간
     route_seen: bool = False         # 주차 통로 색(빨강/파랑)이 보인다
     route_near: bool = False         # 통로 색이 로봇 바로 앞까지 왔다 (= 통로에 들어섰다)
-    uturn_seen: bool = False         # 파란 유턴 선이 보인다 (lane_role)
-    uturn_near: bool = False         # 파란 선이 로봇 바로 앞까지 왔다
+    signs: list = field(default_factory=list)   # 파란 표지판들 [(종류, x -1..1, 먼 끝 행, 가까운 끝 행)] (lane_role)
     zone_seen: bool = False          # 초록 칸 끝 선이 보인다
     zone_y: float = 0.0              # 그 아래 끝 행 / 높이
     route_end: bool = False          # 칸 끝을 가로지르는 통로 색 선이 보인다

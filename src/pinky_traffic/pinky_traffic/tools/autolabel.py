@@ -16,7 +16,9 @@ import os
 import cv2
 
 from ..core.config import Config
-from ..core.detectors import HsvDetector
+import numpy as np
+
+from ..core.detectors import HsvDetector, blue_signs
 from .dataset import DatasetWriter, masks_to_label, draw_label
 
 
@@ -46,10 +48,15 @@ def main():
         p, masks, small = detector.detect(image)
         if not p.crosswalk:
             masks['crosswalk'] = None
-        # 파란 유턴 표시 (uturn 클래스): 색으로 찾은 덩어리를 그대로 라벨로
+        # 파란 표지판 (turn / straight_right): 색으로 찾은 덩어리를 모양(길쭉한가)으로 나눠 라벨로. --review 로 꼭 확인
         blue = detector.color_mask(small, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
-        h, w = blue.shape[:2]
-        masks['uturn'] = blue if cv2.countNonZero(blue) >= cfg.route_min_area * w * h else None
+        n, labels = cv2.connectedComponents(blue)
+        masks['turn'], masks['straight_right'] = np.zeros_like(blue), np.zeros_like(blue)
+        for i in range(1, n):
+            part = np.uint8(labels == i) * 255
+            found = blue_signs(part, cfg)
+            if found:
+                masks[found[0][0]] |= part
         lines = masks_to_label(masks)
         view = draw_label(small, lines)
         if args.review:

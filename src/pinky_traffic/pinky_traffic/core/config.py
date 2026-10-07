@@ -76,6 +76,7 @@ class Config:
     junction_clear_sec: float = 8.0  # 유턴한 로봇: 파란 선이 끝난 뒤 이 시간 동안 오른쪽 선만 따라가고(칸 입구를 지나침) 그 뒤 구간을 내준다
     exit_wait_sec: float = 2.0       # 2차선 로봇: 칸에서 돌아선 뒤 최소 이만큼 기다렸다가 나간다
     exit_follow_sec: float = 8.0     # (2026-10-07 부터 안 씀) 예전: 칸에서 나올 때 왼쪽 선만 따라 2차선으로 좌회전
+    # (2026-10-07 표지판 맵부터 안 씀: uturn_min_deg, exit_follow_sec, pocket_advance_m, exit_advance_m, pocket_turn_deg, exit_blind_sec)
     # 2차선 로봇의 칸 드나들기: 파란 화살표가 칸 입구 위를 지나간다. 파란 선이 발밑에 오면 그 선을 따라
     # pocket_advance_m 만큼 더 간 뒤 제자리에서 오른쪽으로 pocket_turn_deg 돌아 칸으로 들어간다.
     # 나올 때는 파란 선이 발밑에 오면 exit_advance_m 더 간 뒤 오른쪽으로 돌아 파란 선을 따라 유턴한다. (거리는 명령 속도를 더해서 잰다)
@@ -95,6 +96,19 @@ class Config:
     pocket_decide_sec: float = 1.0   # 2차선 로봇: 깃발이 없을 때 파란 선 앞에서 이만큼 서서 한 번 더 기다려 본 뒤 유턴한다
     pass_clear_sec: float = 1.5      # 2차선 로봇: 칸에서 본 상대 로봇이 이 시간 동안 안 보이면 '지나갔다'
     pass_front_m: float = 0.35       # 2차선 로봇: 칸에서 라이다 전방 이 거리 안에 뭔가 지나가도 '상대 로봇을 봤다'로 친다 (칸은 테이프라 벽이 없다)
+    # 2026-10-07 표지판 맵: 파란 선 대신 바닥의 파란 양방향 표지판 두 종류를 보고 그 자리에서 돈다.
+    #   turn = 우회전 양방향(꺾인 화살표, 오는 방향에 따라 우회전/좌회전), straight_right = 직우 양방향(긴 ←→ 에 칸 쪽 가지)
+    # 경로 = "표지판종류:행동" 을 만나는 순서대로 쉼표로. 행동 right|left|straight. 다 지나면 흰 차선을 따라간다.
+    plan_lane1: str = 'turn:right, turn:right, straight_right:straight'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진
+    plan_lane2: str = 'straight_right:straight, turn:left, turn:left'      # 2차선, 상대가 안 온다: S 직진 -> 좌 -> 좌 (=유턴, 1차선으로)
+    plan_lane2_pocket: str = 'straight_right:right'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
+    plan_lane2_exit: str = 'turn:right, turn:left, turn:left'              # 칸에서 나와: 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
+    sign_stop_row: float = 0.80      # 표지판의 먼 쪽 끝이 이 행까지 오면 '도착' (긴 직우 표지판은 끝(가지)까지 가서 판단한다)
+    sign_advance_m: float = 0.12     # 도착한 뒤 곧장 더 가서 표지판 위에 선다 (카메라 앞 10cm 는 안 보인다)
+    sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
+    sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
+    sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
+    sign_long_ratio: float = 3.0     # 색으로 찾을 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
 
     # ---------- 주차 통로 (흰 차선 끝에서 빨강/파랑 테이프로 이어지는 길) ----------
     route_color: str = ''            # '' (안 씀) | 'red' | 'blue' : 이 로봇이 따라갈 통로 색
@@ -184,8 +198,8 @@ TUNABLE = [
     ('park_stop_m', 0.05, 0.40, 0.01),
     ('park_line_row', 0.55, 0.95, 0.01),
     ('park_turn_deg', 0.0, 360.0, 5.0),
-    ('pocket_advance_m', 0.0, 0.40, 0.01),
-    ('exit_advance_m', 0.0, 0.40, 0.01),
-    ('pocket_turn_deg', 30.0, 150.0, 5.0),
+    ('sign_stop_row', 0.40, 1.00, 0.02),
+    ('sign_advance_m', 0.0, 0.40, 0.01),
+    ('sign_turn_deg', 30.0, 150.0, 5.0),
     ('conf', 0.1, 0.9, 0.05),
 ]

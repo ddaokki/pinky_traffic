@@ -1,8 +1,8 @@
 """차선/횡단보도 검출기 두 종류. 둘 다 detect(frame_bgr) -> (Perception, masks dict).
 
 HsvDetector  : 색(inRange)으로 찾는다. 학습 없이 바로 되고, 자동 라벨링에도 쓴다.
-YoloDetector : 학습한 YOLO-seg (best.pt). 클래스 left / right / crosswalk (+ uturn, robot 선택).
-               초록 칸 끝 선은 색으로 찾고, uturn 클래스가 없는 모델이면 파란 유턴 선도 색으로 찾는다.
+YoloDetector : 학습한 YOLO-seg (best.pt). 클래스 left / right / crosswalk (+ turn, straight_right, robot 선택).
+               초록 칸 끝 선은 색으로 찾고, 표지판 클래스가 없는 모델이면 파란 표지판도 색으로 찾는다.
 """
 import time
 
@@ -10,7 +10,23 @@ import cv2
 import numpy as np
 
 from .perception import (LaneMemory, Perception, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
-                         remove_wall_base, route_end_bar, center_line_perception)
+                         remove_wall_base, route_end_bar, SIGNS)
+
+
+def blue_signs(blue, cfg):
+    """파란 마스크 -> 표지판 목록 [(종류, x, 먼 끝 행, 가까운 끝 행)] (가까운 것부터).
+    색만으로는 모양을 모르니, 길쭉하면(긴 ←→) 직우 양방향, 아니면 우회전 양방향으로 본다."""
+    h, w = blue.shape[:2]
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
+    out = []
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < cfg.sign_min_area * w * h:
+            continue
+        ys, xs = np.nonzero(labels == i)
+        (_, _), (a, b), _ = cv2.minAreaRect(np.column_stack([xs, ys]).astype(np.float32))
+        kind = 'straight_right' if max(a, b) >= cfg.sign_long_ratio * max(1.0, min(a, b)) else 'turn'
+        out.append((kind, float((xs.mean() - w / 2.0) / (w / 2.0)), float(ys.min() / (h - 1)), float(ys.max() / (h - 1))))
+    return sorted(out, key=lambda s: -s[3])
 
 
 class HsvDetector:
@@ -21,11 +37,9 @@ class HsvDetector:
         self.route_seen = self.route_near = False
         self.route_end_y = 0.0
         self.prefer = ''                 # 'left' | 'right' : 제어기가 정한다. 그쪽 선만 보고 따라간다 (갈림길)
-        self.uturn = None                # 파란 유턴 선 마스크 (lane_role 일 때)
+        self.signs = []                  # 파란 표지판 (lane_role 일 때)
         self.follow_zone = False         # 제어기가 정한다: 칸 안에서는 초록 선 가운데를 보고 간다
         self.zone_x = 0.0                # 초록 선 가운데의 가로 위치 (-1 왼쪽 .. 1 오른쪽)
-        self.follow_blue = False         # 제어기가 정한다: 2차선 로봇도 잠깐 파란 선을 따라간다 (칸 입구까지)
-        self.uturn_near = False
         self.zone_y = 0.0
 
     def color_mask(self, frame, lo, hi):
@@ -106,16 +120,13 @@ class HsvDetector:
         return {'left': left, 'right': right, 'crosswalk': crosswalk}, found
 
     def role_marks(self, frame):
-        """lane_role 맵의 색 표시: 파란 유턴 선, 초록 칸 끝 선."""
+        """lane_role 맵의 색 표시: 파란 표지판, 초록 칸 끝 선."""
         cfg = self.cfg
         h, w = frame.shape[:2]
-        self.uturn, self.uturn_near, self.zone_y = None, False, 0.0
+        self.signs, self.zone_y = [], 0.0
         if not cfg.lane_role:
             return
-        blue = self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
-        if cv2.countNonZero(blue) >= cfg.route_min_area * w * h:
-            self.uturn = blue
-            self.uturn_near = np.flatnonzero(blue.any(axis=1)).max() >= cfg.route_only_row * (h - 1)
+        self.signs = blue_signs(self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi), cfg)
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         green = cv2.inRange(hsv, np.array(cfg.green_hsv_lo, np.uint8), np.array(cfg.green_hsv_hi, np.uint8))
         green[: int(cfg.zone_roi_top * h)] = 0
@@ -134,12 +145,8 @@ class HsvDetector:
         return p, masks, frame
 
     def perceive(self, frame, masks, found):
-        """차선 마스크 + 역할 표시(파란 선/초록 선) + 제어기의 지시(prefer/follow_*) -> Perception."""
-        if self.uturn is not None and ((self.cfg.lane_role == 1 and self.uturn_near) or self.follow_blue):
-            # 1차선 로봇: 파란 선이 발밑까지 오면 흰 선 대신 파란 선을 가운데 두고 따라간다
-            p = center_line_perception(self.uturn, self.cfg)
-            masks = {'left': None, 'right': None, 'crosswalk': self.uturn}
-        elif self.follow_zone and self.zone_y > 0:
+        """차선 마스크 + 역할 표시(파란 표지판/초록 선) + 제어기의 지시(prefer/follow_zone) -> Perception."""
+        if self.follow_zone and self.zone_y > 0:
             # 칸 안: 칸 끝은 흰 선이 ㄷ자로 막혀 있어 좌우 선 구분이 틀어진다 (2026-10-04: 초록을 보고도 왼쪽으로 빠져나감).
             # 초록 선 가운데를 향해 간다
             p = Perception(size=(frame.shape[1], frame.shape[0]), ok=True, offset=float(np.clip(self.zone_x, -1.5, 1.5)))
@@ -152,7 +159,7 @@ class HsvDetector:
             p = lane_from_masks(masks['left'], masks['right'], None, self.cfg, self.memory, False)
         else:
             p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
-        p.uturn_seen, p.uturn_near = self.uturn is not None, bool(self.uturn_near)
+        p.signs = list(self.signs)
         p.zone_seen, p.zone_y = self.zone_y > 0, self.zone_y
         p.route_seen, p.route_near = self.route_seen, bool(self.route_near)
         p.route_end, p.route_end_y = self.route_end_y > 0, self.route_end_y
@@ -167,10 +174,10 @@ class YoloDetector:
         self.model = YOLO(cfg.weights)
         self.names = self.model.names            # {0: 'left', ...}
         self.model.predict(np.zeros((cfg.imgsz, cfg.imgsz, 3), np.uint8), imgsz=cfg.imgsz, verbose=False)  # 워밍업
-        self.has_uturn = 'uturn' in self.names.values()
+        self.has_signs = any(name in SIGNS for name in self.names.values())
         self.marks = HsvDetector(cfg)            # 역할 표시와 갈림길 판단은 색 검출기와 같은 코드를 쓴다
         self.marks.memory = self.memory
-        self.prefer, self.follow_blue, self.follow_zone = '', False, False   # 제어기가 정한다 (HsvDetector 와 같다)
+        self.prefer, self.follow_zone = '', False   # 제어기가 정한다 (HsvDetector 와 같다)
 
     def detect(self, frame):
         t0 = time.perf_counter()
@@ -178,8 +185,9 @@ class YoloDetector:
         frame = resize_to(frame, cfg.proc_width)
         h, w = frame.shape[:2]
         r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
-        masks = {name: np.zeros((h, w), np.uint8) for name in ('left', 'right', 'crosswalk', 'lane', 'robot', 'uturn')}
+        masks = {name: np.zeros((h, w), np.uint8) for name in ('left', 'right', 'crosswalk', 'lane', 'robot')}
         obstacle_y = 0.0
+        signs = []
         if r.boxes is not None and len(r.boxes):
             classes = r.boxes.cls.cpu().numpy().astype(int)
             polys = r.masks.xy if r.masks is not None else [None] * len(classes)
@@ -188,6 +196,9 @@ class YoloDetector:
                 name = self.names.get(int(cls_id), str(cls_id))
                 if name == 'robot':
                     obstacle_y = max(obstacle_y, float(box[3] / (h - 1)))
+                if name in SIGNS:
+                    signs.append((name, float(((box[0] + box[2]) / 2 - w / 2.0) / (w / 2.0)),
+                                  float(box[1] / (h - 1)), float(box[3] / (h - 1))))
                 if name in masks and poly is not None and len(poly) >= 3:
                     cv2.fillPoly(masks[name], [np.asarray(poly, np.int32)], 255)
         top = int(cfg.roi_top * h)
@@ -199,17 +210,12 @@ class YoloDetector:
             masks['left'] |= left
             masks['right'] |= right
         robot = masks.pop('robot')
-        uturn = masks.pop('uturn')
         del masks['lane']
         m = self.marks
-        m.prefer, m.follow_blue, m.follow_zone = self.prefer, self.follow_blue, self.follow_zone
-        m.role_marks(frame)                      # 초록 선 (+ 파란 선을 색으로)
-        if cfg.lane_role and self.has_uturn:
-            # 학습한 파란 유턴 표시를 쓴다 (색 대신)
-            m.uturn, m.uturn_near = None, False
-            if cv2.countNonZero(uturn) >= cfg.route_min_area * w * h:
-                m.uturn = uturn
-                m.uturn_near = np.flatnonzero(uturn.any(axis=1)).max() >= cfg.route_only_row * (h - 1)
+        m.prefer, m.follow_zone = self.prefer, self.follow_zone
+        m.role_marks(frame)                      # 초록 선 (+ 파란 표지판을 색으로)
+        if cfg.lane_role and self.has_signs:
+            m.signs = sorted(signs, key=lambda s: -s[3])   # 학습한 표지판을 쓴다 (색 대신)
         p, masks = m.perceive(frame, masks, None)
         masks = dict(masks, robot=robot)
         p.obstacle_y = obstacle_y

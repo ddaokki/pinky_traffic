@@ -79,8 +79,7 @@ class Driver:
             self._forget()
             self.controller.start(now)
         self._apply_pending(now)
-        self.detector.follow_blue = self.controller.follow_blue
-        self.detector.follow_zone = self.controller.pocket_mode and not self.controller.follow_blue
+        self.detector.follow_zone = self.controller.pocket_mode
         self.detector.prefer = self.controller.prefer      # 갈림길에서 어느 쪽 선을 따라갈지
         p, masks, small = self.detector.detect(frame)
         cmd = self.controller.step(p, front_m, now)
@@ -100,7 +99,7 @@ class Driver:
                  'crossings': self.controller.crossings,
                  'route': self.controller.in_route, 'route_seen': p.route_seen,
                  'route_end_y': round(p.route_end_y, 2), 'role': self.cfg.lane_role,
-                 'prefer': self.controller.prefer, 'uturn': p.uturn_seen, 'zone_y': round(p.zone_y, 2), 'led': list(self.controller.led)}
+                 'prefer': self.controller.prefer, 'sign': p.signs[0][0] if p.signs else '', 'plan': self.controller.plan_text, 'zone_y': round(p.zone_y, 2), 'led': list(self.controller.led)}
         text = f'{self.name} {cmd.state} v={cmd.v:.2f} w={cmd.w:+.2f}'
         self.debug = draw_debug(small, p, masks, text)
         if self.link:

@@ -1,12 +1,13 @@
-"""2026-10-04 맵: 1차선 = 파란 선 유턴, 2차선 = 반대로 유턴. 2026-10-07 교행: 1차선이 오면(깃발) 2차선은 초록 칸으로 비킨다."""
+"""2026-10-07 표지판 맵: 바닥의 파란 양방향 표지판(우회전 / 직우)을 경로 순서대로 지나간다.
+1차선이 오면(깃발) 2차선은 직우 표지판에서 우회전해 초록 칸으로 비켰다가, 나와서 우회전 -> 좌 -> 좌 로 1차선에 간다."""
 import cv2
 import numpy as np
 
 from pinky_traffic.core.config import Config
 from pinky_traffic.core.controller import (LaneController, LANE_FOLLOW, PARK_TURN, WAIT_EXIT, WAIT_JUNCTION,
-                                            POCKET_ADVANCE, POCKET_TURN)
+                                            SIGN_APPROACH, SIGN_ADVANCE, SIGN_TURN, SIGN_SEARCH, parse_plan)
 from pinky_traffic.core.coordinator import LockManager, LocalLock
-from pinky_traffic.core.detectors import HsvDetector
+from pinky_traffic.core.detectors import HsvDetector, blue_signs
 from pinky_traffic.core.perception import Perception
 
 W, H = 320, 240
@@ -35,22 +36,6 @@ def started(lock=None, **cfg):
 
 # ---------- 인식 ----------
 
-def test_lane1_follows_blue_line_in_the_middle():
-    img = floor()
-    cv2.line(img, (200, H - 1), (220, int(H * 0.45)), BLUE, 10)          # 파란 선이 오른쪽에 있다
-    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
-    assert p.uturn_near and p.ok and 0.15 < p.offset < 0.5                # 오른쪽으로 가서 선을 가운데에 둔다
-    p, _, _ = HsvDetector(Config(lane_role=2)).detect(img)                # 2차선 로봇은 파란 선을 따라가지 않는다
-    assert p.uturn_seen and not p.ok
-
-
-def test_blue_is_ignored_without_role():
-    img = floor()
-    cv2.line(img, (200, H - 1), (220, int(H * 0.45)), BLUE, 10)
-    p, _, _ = HsvDetector(Config()).detect(img)
-    assert not p.uturn_seen and not p.ok
-
-
 def test_green_bar_is_seen():
     img = lanes(floor())
     cv2.line(img, (95, 190), (225, 190), GREEN, 10)
@@ -74,20 +59,6 @@ def test_prefer_right_uses_only_right_line():
 
 # ---------- 제어 ----------
 
-def test_lane1_uturn_then_follow_right_then_normal():
-    c = started(lane_role=1, junction_clear_sec=8.0, uturn_min_deg=0.0)
-    assert c.step(see(), 1.0, 0.1).state == LANE_FOLLOW and c.prefer == ''
-    c.step(see(uturn_seen=True, uturn_near=True), 1.0, 1.0)
-    assert c.uturn_started and not c.uturn_done
-    c.step(see(uturn_seen=True, uturn_near=True), 0.18, 2.0)              # 유턴 중에는 벽이 0.18 이어도 안 선다
-    assert c.state == LANE_FOLLOW
-    c.step(see(), 1.0, 3.0)
-    c.step(see(), 1.0, 4.1)                                               # 파란 선이 1초 넘게 안 보인다 = 유턴 끝
-    assert c.uturn_done and c.prefer == 'right'
-    c.step(see(), 1.0, 12.2)
-    assert c.prefer == '' and not c.junction_held
-
-
 def run(c, p, t0, t1, dt=0.1, front=1.0):
     t, cmd = t0, None
     while t < t1 - 1e-9:
@@ -96,41 +67,10 @@ def run(c, p, t0, t1, dt=0.1, front=1.0):
     return cmd, t
 
 
-def test_green_before_blue_is_ignored_by_lane2():
-    c = started(lane_role=2)
-    for i in range(4):
-        assert c.step(see(zone_seen=True, zone_y=0.9), 1.0, 0.1 * (i + 1)).state == LANE_FOLLOW
-
-
-def test_lost_preferred_line_spins_toward_it():
-    c = started(lane_role=1, side_spin_w=0.6, uturn_min_deg=0.0)
-    c.step(see(uturn_seen=True, uturn_near=True), 1.0, 0.1)
-    c.step(see(), 1.0, 0.2)
-    c.step(see(), 1.0, 1.4)                                               # 유턴 끝 -> 오른쪽 선만 따라간다
-    assert c.prefer == 'right'
-    c.step(see(), 1.0, 1.5)
-    cmd = c.step(Perception(ok=False), 1.0, 2.5)
-    assert cmd.v == 0 and cmd.w == -0.6                                   # 오른쪽 선을 찾아 오른쪽으로 돈다
-
-
 def test_crosswalk_first_seen_close_is_ignored():
     c = started(crosswalk_stop_row=0.80)
     for i in range(3):
         assert c.step(see(crosswalk=True, crosswalk_y=0.79), 1.0, 0.1 * (i + 1)).state == LANE_FOLLOW
-
-
-def test_blue_lost_mid_uturn_spins_right_until_found():
-    # 2026-10-04 pinky2: 파란 선의 꺾이는 곳에서 선이 카메라 밑으로 사라져 유턴이 끝난 줄 알고 벽으로 갔다
-    c = started(lane_role=1, side_spin_w=0.6, uturn_min_deg=140.0)
-    c.step(see(uturn_seen=True, uturn_near=True), 1.0, 0.1)
-    assert c.uturn_started and c.follow_blue
-    c.step(see(), 1.0, 0.2)
-    cmd, t = run(c, see(), 0.2, 2.0)                                      # 아직 덜 돌았는데 파란 선이 안 보인다
-    assert cmd.v == 0 and cmd.w == -0.6 and not c.uturn_done
-    cmd = c.step(see(uturn_seen=True, uturn_near=True), 1.0, t + 0.1)     # 다시 보이면 따라간다
-    assert cmd.v > 0
-    cmd, t = run(c, see(), t + 0.1, t + 6.0)                              # 계속 돌아 140도를 넘기면 유턴 끝
-    assert c.uturn_done and c.prefer == 'right' and not c.follow_blue
 
 
 def test_stripes_taken_as_left_line_do_not_shrink_lane_width():
@@ -196,73 +136,152 @@ def run_flag(c, clock, p, t1, front=1.0, flag=None, dt=0.1):
     return cmd
 
 
-POCKET = dict(use_coordinator=True, v_min=0.04, pocket_advance_m=0.18, exit_advance_m=0.06, pocket_turn_deg=90.0,
-              park_turn_w=0.8, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35)
-ON_BLUE = see(uturn_seen=True, uturn_near=True)
+
+
+
+# ---------- 2026-10-07 표지판 ----------
+
+def sign(kind, x=0.0, far=0.5, near=0.7):
+    return see(signs=[(kind, x, far, near)])
+
+
+FAR_T, AT_T = sign('turn'), sign('turn', far=0.85, near=1.0)
+FAR_S, AT_S = sign('straight_right'), sign('straight_right', far=0.85, near=1.0)
+SIGN = dict(v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_stop_row=0.80, sign_search_sec=6.0,
+            junction_clear_sec=8.0)
+
+
+def test_plan_text_is_parsed():
+    assert parse_plan('turn:right, turn:right, straight_right:straight') == \
+        [('turn', 'right'), ('turn', 'right'), ('straight_right', 'straight')]
+
+
+def test_blue_signs_classified_by_shape():
+    img = floor()
+    cv2.line(img, (60, 200), (90, 110), BLUE, 6)                          # 길쭉한 화살표 -> 직우
+    cv2.rectangle(img, (200, 150), (240, 175), BLUE, -1)                  # 뭉툭한 꺾인 화살표 -> 우회전
+    cv2.rectangle(img, (200, 175), (215, 200), BLUE, -1)
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    kinds = sorted(s[0] for s in p.signs)
+    assert kinds == ['straight_right', 'turn']
+    turn = next(s for s in p.signs if s[0] == 'turn')
+    assert turn[1] > 0.2 and 0.6 < turn[2] < turn[3] < 0.9                # 오른쪽에, 먼 끝 < 가까운 끝
+    p, _, _ = HsvDetector(Config()).detect(img)
+    assert p.signs == []                                                  # 역할이 없으면 안 본다
+
+
+def through(c, near_p, far_p, t, action, clock=None, flag=None):
+    """표지판 하나: 보임 -> 다가감 -> 끝에 도착 -> 더 감 -> (회전). 끝난 시각을 돌려준다."""
+    step = (lambda p, t1, front=1.0: run_flag(c, clock, p, t1, front, flag)) if clock else \
+        (lambda p, t1, front=1.0: run(c, p, t, t1, front=front)[0])
+    cmd = step(far_p, t + 0.1)
+    assert cmd.state == SIGN_APPROACH and cmd.v == 0.04
+    cmd = step(near_p, t + 0.2)
+    assert cmd.state == SIGN_ADVANCE and cmd.w == 0
+    cmd = step(near_p, t + 3.2)                                           # 0.12m / 0.04 = 3초
+    t = t + 3.2
+    if action == 'straight':
+        return cmd, t
+    assert cmd.state == SIGN_TURN and (cmd.w < 0 if action == 'right' else cmd.w > 0)
+    cmd = step(see(), t + 2.0)                                            # 90도 / 0.8 = 1.96초
+    return cmd, t + 2.0
+
+
+def test_lane1_route_right_right_straight_then_lanes():
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    cmd = c.step(sign('turn', x=0.4), 1.0, 0.2)
+    assert cmd.state == SIGN_APPROACH and c.plan_name == 'plan_lane1'
+    cmd = c.step(sign('turn', x=0.4), 1.0, 0.3)
+    assert cmd.w < 0                                                      # 표지판 쪽(오른쪽)으로 간다
+    cmd, t = through(c, AT_T, FAR_T, 0.3, 'right')
+    assert cmd.state == SIGN_SEARCH and cmd.v == 0.04 and cmd.w == 0       # 다음 표지판을 찾으며 곧장
+    cmd, t = through(c, AT_T, FAR_T, t, 'right')
+    cmd, t = through(c, AT_S, FAR_S, t, 'straight')
+    assert c.plan_done and cmd.state == LANE_FOLLOW                       # 경로 끝 -> 흰 차선
+    run(c, see(), t, t + 8.2)
+    assert c.cleared
+
+
+def test_lane2_ignores_turn_sign_before_straight_right():
+    c = started(lane_role=2, **SIGN)
+    assert c.step(FAR_T, 1.0, 0.1).state == LANE_FOLLOW and not c.plan  # 2차선의 첫 표지판은 직우
+    assert c.step(FAR_S, 1.0, 0.2).state == SIGN_APPROACH and c.plan_name == 'plan_lane2'
+
+
+def test_lane2_without_oncoming_goes_straight_then_left_left():
+    c = started(lane_role=2, **SIGN)                                      # 1대 (서버 없음): 기다리지 않는다
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_S, FAR_S, 0.1, 'straight')
+    assert cmd.state == SIGN_SEARCH and not c.pocket_mode
+    cmd = c.step(see(signs=[('straight_right', 0.0, 0.7, 1.0), ('turn', -0.3, 0.4, 0.6)]), 1.0, t + 0.1)
+    assert cmd.state == SIGN_APPROACH and c.target[0] == 'turn'           # 발밑에 남은 직우는 무시하고 우회전 양방향으로
+    cmd, t = through(c, AT_T, FAR_T, t + 0.1, 'left')
+    cmd, t = through(c, AT_T, FAR_T, t, 'left')
+    assert c.plan_done and cmd.state == LANE_FOLLOW
+
+
+def test_sign_not_found_gives_up_route():
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
+    cmd, t = run(c, see(), t, t + 5.0)
+    assert cmd.state == SIGN_SEARCH and cmd.v > 0
+    cmd, t = run(c, see(), t, t + 1.5)
+    assert c.plan_done and c.state == LANE_FOLLOW                         # 6초 안에 못 찾으면 흰 차선으로
+
+
+POCKET = dict(SIGN, use_coordinator=True, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35,
+              pocket_decide_sec=1.0)
 
 
 def into_pocket(c, clock):
-    """깃발이 있을 때 파란 선 앞 -> 칸 -> 초록 앞 180도 -> WAIT_EXIT 까지."""
+    """깃발이 있을 때 직우 표지판 -> 우회전 -> 칸 -> 초록 앞 180도 -> WAIT_EXIT 까지."""
     run_flag(c, clock, see(), 0.1, flag=True)
-    cmd = run_flag(c, clock, ON_BLUE, 0.2, flag=True)
-    assert cmd.state == POCKET_ADVANCE and c.follow_blue and c.junction_held   # 상대가 온다 -> 칸으로 비킨다
-    cmd = run_flag(c, clock, ON_BLUE, 5.2, flag=True)                       # 0.18m / 0.04 = 4.5초
-    assert cmd.state == POCKET_TURN and cmd.w == -0.8                    # 오른쪽으로 90도
-    cmd = run_flag(c, clock, see(), clock.t + 2.3, flag=True)
-    assert cmd.state == LANE_FOLLOW
+    cmd, _ = through(c, AT_S, FAR_S, clock.t, 'right', clock, True)
+    assert c.pocket_mode and cmd.state == LANE_FOLLOW and cmd.w == 0      # 초록이 보일 때까지 곧장
     run_flag(c, clock, see(zone_seen=True, zone_y=0.85), clock.t + 0.2, flag=True)
     assert c.state == PARK_TURN
     cmd = run_flag(c, clock, see(), clock.t + 3.1416 / 0.8 + 0.2, flag=True)
     assert cmd.state == WAIT_EXIT and not c.junction_held               # 칸 안에 들어왔다 -> 구간을 내준다
 
 
-def test_lane2_without_oncoming_uturns_right_away_counterclockwise():
-    c = started(lane_role=2, side_spin_w=0.6, uturn_min_deg=140.0)      # 1대 (서버 없음): 기다리지 않는다
-    c.step(see(), 1.0, 0.1)
-    cmd = c.step(ON_BLUE, 1.0, 0.2)
-    assert cmd.state == LANE_FOLLOW and c.uturn_started and c.follow_blue and not c.pocket_mode
-    c.step(see(), 1.0, 0.3)
-    cmd, t = run(c, see(), 0.3, 2.0)                                    # 덜 돌았는데 파란 선을 놓쳤다
-    assert cmd.v == 0 and cmd.w == 0.6                                   # 유턴 방향(왼쪽)으로 돌며 찾는다
-
-
-def test_lane2_waits_a_moment_for_oncoming_then_uturns():
+def test_lane2_waits_a_moment_on_sign_for_oncoming():
     clock = Clock()
-    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, use_coordinator=True, pocket_decide_sec=1.0)
-    run_flag(c, clock, see(), 0.1)
-    cmd = run_flag(c, clock, ON_BLUE, 0.5)
-    assert cmd.state == WAIT_JUNCTION and cmd.v == 0 and not c.uturn_started   # 깃발이 올지 잠깐 본다
-    run_flag(c, clock, ON_BLUE, 1.3)
-    assert c.uturn_started and c.junction_held and not c.pocket_mode    # 안 온다 -> 구간을 쥐고 유턴
+    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, **POCKET)
+    run_flag(c, clock, FAR_S, 0.1)
+    cmd = run_flag(c, clock, AT_S, 0.6)
+    assert cmd.state == WAIT_JUNCTION and cmd.v == 0                      # 깃발이 올지 잠깐 본다
+    cmd = run_flag(c, clock, AT_S, 1.3)
+    assert c.state == SIGN_ADVANCE and c.action == 'straight' and c.junction_held
 
 
-def test_lane2_flag_during_decide_goes_to_pocket():
+def test_lane2_flag_while_deciding_goes_to_pocket():
     clock = Clock()
-    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, use_coordinator=True, pocket_decide_sec=1.0)
-    run_flag(c, clock, ON_BLUE, 0.4)
-    cmd = run_flag(c, clock, ON_BLUE, 0.6, flag=True)
-    assert cmd.state == POCKET_ADVANCE and c.pocket_mode
+    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, **POCKET)
+    run_flag(c, clock, FAR_S, 0.1)
+    run_flag(c, clock, AT_S, 0.5)
+    run_flag(c, clock, AT_S, 0.7, flag=True)
+    assert c.plan_name == 'plan_lane2_pocket' and c.action == 'right'
 
 
-def test_lane2_exits_when_robot_passed_then_turns_right_and_uturns():
+def test_lane2_pocket_then_exit_right_left_left():
     clock = Clock()
     c = started(LocalLock(clock.mgr, 'b'), lane_role=2, **POCKET)
     into_pocket(c, clock)
-    t0 = clock.t
-    cmd = run_flag(c, clock, see(), t0 + 3.0, flag=True)
+    cmd = run_flag(c, clock, see(), clock.t + 3.0, flag=True)
     assert cmd.state == WAIT_EXIT                                        # 깃발이 있고 아무도 안 지나갔다
     cmd = run_flag(c, clock, see(), clock.t + 1.0, front=0.25, flag=True)   # 상대가 칸 앞을 지나간다 (라이다)
     assert cmd.state == WAIT_EXIT and c.saw_robot
     cmd = run_flag(c, clock, see(), clock.t + 1.3, flag=True)
     assert cmd.state == WAIT_EXIT                                        # 아직 1.5초가 안 됐다
     cmd = run_flag(c, clock, see(offset=1.2), clock.t + 0.4, flag=True)
-    assert cmd.state == LANE_FOLLOW and c.exiting and cmd.w == 0 and cmd.v == 0.04   # 깃발이 남아 있어도 지나갔으면 나간다 (곧장)
-    cmd = run_flag(c, clock, ON_BLUE, clock.t + 0.1, flag=True)
-    assert cmd.state == POCKET_ADVANCE and cmd.w == 0
-    cmd = run_flag(c, clock, ON_BLUE, clock.t + 2.0, flag=True)
-    assert cmd.state == POCKET_TURN and cmd.w == -0.8                    # 오른쪽으로 90도 (예전에는 왼쪽)
-    cmd = run_flag(c, clock, ON_BLUE, clock.t + 2.4, flag=True)
-    assert cmd.state == LANE_FOLLOW and c.uturn_started and c.follow_blue and not c.exiting   # 파란 선을 따라 유턴
+    assert cmd.state == LANE_FOLLOW and c.exiting and cmd.w == 0 and cmd.v == 0.04   # 지나갔으면 깃발이 있어도 나간다 (곧장)
+    assert c.plan_name == 'plan_lane2_exit'
+    cmd, _ = through(c, AT_T, FAR_T, clock.t, 'right', clock, True)
+    cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
+    cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
+    assert c.plan_done and cmd.state == LANE_FOLLOW
 
 
 def test_lane2_exits_when_flag_goes_down():
@@ -275,28 +294,26 @@ def test_lane2_exits_when_flag_goes_down():
     assert cmd.state == LANE_FOLLOW and c.exiting
 
 
-def test_lane1_raises_flag_on_seeing_uturn_sign_and_lowers_after_clear():
+def test_lane1_raises_flag_on_first_sign_and_lowers_after_clear():
     clock = Clock()
-    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, use_coordinator=True, uturn_min_deg=0.0, junction_clear_sec=8.0)
+    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **POCKET)
     run_flag(a, clock, see(), 0.1)
     assert clock.mgr.flags_of_others('b') == []
-    run_flag(a, clock, see(uturn_seen=True), 0.2)                        # 멀리 파란 표시가 보인다
-    assert clock.mgr.flags_of_others('b') == ['oncoming'] and not a.uturn_started
-    run_flag(a, clock, ON_BLUE, 1.0)
-    run_flag(a, clock, see(), 2.2)
-    assert a.uturn_done and clock.mgr.flags_of_others('b') == ['oncoming']   # 칸 입구를 지날 때까지 유지
-    run_flag(a, clock, see(), 10.5)
+    run_flag(a, clock, FAR_T, 0.2)                                        # 우회전 양방향 표지판이 보인다
+    assert clock.mgr.flags_of_others('b') == ['oncoming'] and a.junction_held
+    for kind, act in (('turn', 'right'), ('turn', 'right'), ('straight_right', 'straight')):
+        near, far = (AT_T, FAR_T) if kind == 'turn' else (AT_S, FAR_S)
+        through(a, near, far, clock.t, act, clock)
+    assert a.plan_done and clock.mgr.flags_of_others('b') == ['oncoming']   # 구간을 벗어날 때까지 유지
+    run_flag(a, clock, see(), clock.t + 8.2)
     assert a.cleared and clock.mgr.flags_of_others('b') == [] and not a.junction_held
 
 
 def test_lane2_gives_up_pocket_if_green_never_found():
     clock = Clock()
-    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, use_coordinator=True, v_min=0.04, pocket_advance_m=0.04,
-                park_turn_w=0.8, pocket_blind_sec=4.0, pocket_giveup_sec=15.0)
+    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, pocket_blind_sec=4.0, pocket_giveup_sec=15.0, **POCKET)
     run_flag(c, clock, see(), 0.1, flag=True)
-    run_flag(c, clock, ON_BLUE, 1.5, flag=True)
-    cmd = run_flag(c, clock, see(offset=-1.2), clock.t + 2.5, flag=True)   # 우회전 끝. 흰 선은 왼쪽으로 가라지만
-    assert cmd.state == LANE_FOLLOW and cmd.w == 0 and cmd.v == 0.04      # 초록이 보일 때까지 곧장 간다
+    through(c, AT_S, FAR_S, clock.t, 'right', clock, True)
     cmd = run_flag(c, clock, see(offset=0.3, zone_seen=True, zone_y=0.5), clock.t + 0.3, flag=True)
     assert cmd.w < 0                                                       # 초록이 보이면 그쪽으로
     run_flag(c, clock, see(), clock.t + 16.0, flag=True)
@@ -307,35 +324,30 @@ def test_lane2_gives_up_pocket_if_green_never_found():
 def test_two_robots_pass_each_other_at_pocket():
     now = [0.0]
     mgr = LockManager(lease_sec=4.0, clock=lambda: now[0])
-    cfg = dict(use_coordinator=True, uturn_min_deg=0.0, v_min=0.04, park_turn_w=0.8, exit_wait_sec=2.0, junction_clear_sec=8.0,
-               pocket_advance_m=0.18, pass_clear_sec=1.5)
-    a = started(LocalLock(mgr, 'a'), lane_role=1, **cfg)
-    b = started(LocalLock(mgr, 'b'), lane_role=2, **cfg)
+    a = started(LocalLock(mgr, 'a'), lane_role=1, **POCKET)
+    b = started(LocalLock(mgr, 'b'), lane_role=2, **POCKET)
     t = 0.0
 
-    def tick(pa, pb, n=1, fa=1.0, fb=1.0):
+    def tick(pa, pb, n=1, fb=1.0):
         nonlocal t
         for _ in range(n):
             t += 0.1
             now[0] = t
-            ca, cb = a.step(pa, fa, t), b.step(pb, fb, t)
+            ca, cb = a.step(pa, 1.0, t), b.step(pb, fb, t)
         return ca, cb
 
-    tick(see(uturn_seen=True), see())                                     # 1차선 로봇이 멀리 파란 표시를 봤다 -> 깃발
-    ca, cb = tick(see(uturn_seen=True), ON_BLUE)
-    assert cb.state == POCKET_ADVANCE and b.junction_held                  # 2차선 로봇은 칸으로 비킨다 (구간을 쥐고)
-    ca, cb = tick(ON_BLUE, ON_BLUE)
-    assert ca.state == WAIT_JUNCTION and ca.v == 0                         # 1차선 로봇은 칸에 들어갈 때까지 기다린다
-    ca, cb = tick(ON_BLUE, ON_BLUE, 70)
-    ca, cb = tick(ON_BLUE, see(zone_seen=True, zone_y=0.85), 2)
-    assert cb.state == PARK_TURN and ca.state == WAIT_JUNCTION
-    ca, cb = tick(ON_BLUE, see(), 41)
+    ca, cb = tick(FAR_T, FAR_S)                                            # 1차선: 우회전 표지판 -> 깃발, 구간을 쥔다
+    assert ca.state == SIGN_APPROACH and a.junction_held and cb.state == SIGN_APPROACH
+    ca, cb = tick(FAR_T, AT_S)
+    assert b.plan_name == 'plan_lane2_pocket' and cb.state == SIGN_ADVANCE  # 2차선: 깃발이 있다 -> 칸으로
+    ca, cb = tick(AT_T, AT_S, 52)                                           # 2차선 우회전 끝 / 1차선 첫 우회전 끝
+    assert b.pocket_mode
+    ca, cb = tick(FAR_T, see(zone_seen=True, zone_y=0.85), 2)
+    assert cb.state == PARK_TURN
+    ca, cb = tick(AT_T, see(), 52)                                          # 1차선 두 번째 우회전 / 2차선 180도
     assert cb.state == WAIT_EXIT
-    ca, cb = tick(ON_BLUE, see())
-    assert ca.state == LANE_FOLLOW and ca.v > 0 and a.uturn_started        # 이제 1차선 로봇이 유턴
-    ca, cb = tick(ON_BLUE, see(), 40)
-    assert cb.state == WAIT_EXIT                                           # 오는 중: 칸에서 기다린다
-    ca, cb = tick(see(), see(), 12, fb=0.25)                               # 유턴 끝, 칸 앞을 지나간다 (2차선 라이다에 걸림)
-    assert a.uturn_done and cb.state == WAIT_EXIT and b.saw_robot
-    ca, cb = tick(see(), see(), 16)                                        # 1.5초 동안 안 보인다 -> 지나갔다
-    assert cb.state == LANE_FOLLOW and b.exiting and a.junction_held       # 1차선 로봇이 구간을 내주기 전이라도 나간다
+    ca, cb = tick(FAR_S, see(), 1)
+    ca, cb = tick(AT_S, see(), 32, fb=0.25)                                 # 1차선이 직우를 지나며 칸 앞을 지나간다
+    assert a.plan_done and cb.state == WAIT_EXIT and b.saw_robot
+    ca, cb = tick(see(), see(), 16)                                         # 1.5초 동안 안 보인다 -> 지나갔다
+    assert b.exiting and b.plan_name == 'plan_lane2_exit'
