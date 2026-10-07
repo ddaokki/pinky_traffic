@@ -72,13 +72,13 @@ class Config:
     green_hsv_lo: List[int] = field(default_factory=lambda: [40, 80, 120])
     green_hsv_hi: List[int] = field(default_factory=lambda: [90, 255, 255])
     junction_resource: str = 'junction'   # 유턴 구간 + 초록 칸 입구. 2대일 때 한 대씩만 지나간다 (use_coordinator)
-    uturn_min_deg: float = 140.0     # 1차선: 이만큼 돌기 전에 파란 선이 안 보이면(카메라 밑으로 사라짐) 오른쪽으로 돌며 다시 찾는다
-    junction_clear_sec: float = 8.0  # 1차선 로봇: 파란 선이 끝난 뒤 이 시간 동안 오른쪽 선만 따라가고(칸 입구를 지나침) 그 뒤 구간을 내준다
+    uturn_min_deg: float = 140.0     # 유턴: 이만큼 돌기 전에 파란 선이 안 보이면(카메라 밑으로 사라짐) 유턴 방향으로 돌며 다시 찾는다
+    junction_clear_sec: float = 8.0  # 유턴한 로봇: 파란 선이 끝난 뒤 이 시간 동안 오른쪽 선만 따라가고(칸 입구를 지나침) 그 뒤 구간을 내준다
     exit_wait_sec: float = 2.0       # 2차선 로봇: 칸에서 돌아선 뒤 최소 이만큼 기다렸다가 나간다
-    exit_follow_sec: float = 8.0     # 2차선 로봇: 칸에서 나올 때 이 시간 동안 왼쪽 선만 따라간다 (2차선으로 좌회전)
+    exit_follow_sec: float = 8.0     # (2026-10-07 부터 안 씀) 예전: 칸에서 나올 때 왼쪽 선만 따라 2차선으로 좌회전
     # 2차선 로봇의 칸 드나들기: 파란 화살표가 칸 입구 위를 지나간다. 파란 선이 발밑에 오면 그 선을 따라
     # pocket_advance_m 만큼 더 간 뒤 제자리에서 오른쪽으로 pocket_turn_deg 돌아 칸으로 들어간다.
-    # 나올 때는 파란 선이 발밑에 오면 exit_advance_m 더 간 뒤 왼쪽으로 돈다. (거리는 명령 속도를 더해서 잰다)
+    # 나올 때는 파란 선이 발밑에 오면 exit_advance_m 더 간 뒤 오른쪽으로 돌아 파란 선을 따라 유턴한다. (거리는 명령 속도를 더해서 잰다)
     pocket_advance_m: float = 0.22
     zone_roi_top: float = 0.25       # 초록 선은 이 행 아래에서 찾는다 (칸에 막 들어섰을 때는 멀어서 차선 ROI 보다 위에 보인다)
     exit_blind_sec: float = 10.0     # 칸에서 나올 때 파란 선이 발밑에 올 때까지 곧장 가는 최대 시간
@@ -88,6 +88,13 @@ class Config:
     pocket_turn_deg: float = 90.0
     side_spin_w: float = 0.6         # 한쪽 선만 따라가는 중에 그 선을 놓치면 그쪽으로 제자리 회전하며 찾는다 (rad/s)
     side_search_sec: float = 6.0     # 그렇게 찾는 최대 시간
+    # 2026-10-07 교행: 1차선 로봇이 파란 유턴 표시를 보면 서버에 oncoming 깃발을 올린다 (칸 입구를 지나 구간을 내줄 때까지).
+    # 2차선 로봇은 파란 선 앞에서: 깃발이 있으면 초록 칸으로 비키고, 없으면 파란 선을 거꾸로 따라 유턴해 1차선으로 간다.
+    # 칸에서는 상대 로봇(yolo 'robot')이 보였다가 pass_clear_sec 동안 안 보이거나, 깃발이 내려가면 나와서 우회전 -> 유턴.
+    oncoming_flag: str = 'oncoming'
+    pocket_decide_sec: float = 1.0   # 2차선 로봇: 깃발이 없을 때 파란 선 앞에서 이만큼 서서 한 번 더 기다려 본 뒤 유턴한다
+    pass_clear_sec: float = 1.5      # 2차선 로봇: 칸에서 본 상대 로봇이 이 시간 동안 안 보이면 '지나갔다'
+    pass_front_m: float = 0.35       # 2차선 로봇: 칸에서 라이다 전방 이 거리 안에 뭔가 지나가도 '상대 로봇을 봤다'로 친다 (칸은 테이프라 벽이 없다)
 
     # ---------- 주차 통로 (흰 차선 끝에서 빨강/파랑 테이프로 이어지는 길) ----------
     route_color: str = ''            # '' (안 씀) | 'red' | 'blue' : 이 로봇이 따라갈 통로 색

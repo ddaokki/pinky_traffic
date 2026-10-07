@@ -21,6 +21,7 @@ class LockManager:
         self.queue = {}                 # resource -> [robot, ...] 도착 순서
         self.seen = {}                  # (resource, robot) -> 마지막 요청 시각
         self.history = []               # (t, resource, robot, 'grant'|'release'|'expire')
+        self.flags = {}                 # (flag, robot) -> 마지막으로 올린 시각. 락과 달리 다른 로봇은 보기만 한다
         self._mutex = threading.Lock()
 
     def _expire(self, resource, now):
@@ -62,10 +63,29 @@ class LockManager:
                 self.holder.pop(resource)
                 self.history.append((now, resource, robot, 'release'))
 
+    def raise_flag(self, flag, robot, on=True):
+        """깃발 (예: 'oncoming' = 1차선 로봇이 유턴 표시를 봤다). 올린 동안 계속 불러야 한다(=하트비트)."""
+        with self._mutex:
+            if on:
+                self.flags[(flag, robot)] = self.clock()
+            else:
+                self.flags.pop((flag, robot), None)
+
+    def flags_of_others(self, robot):
+        """다른 로봇이 올려 둔 깃발 이름들. lease_sec 동안 소식이 없으면 내려간 것으로 본다."""
+        with self._mutex:
+            now = self.clock()
+            return sorted({f for (f, r), t in self.flags.items() if r != robot and now - t <= self.lease_sec})
+
     def snapshot(self):
         with self._mutex:
             resources = set(self.holder) | set(self.queue)
-            return {r: {'holder': self.holder.get(r), 'queue': list(self.queue.get(r, []))} for r in resources}
+            snap = {r: {'holder': self.holder.get(r), 'queue': list(self.queue.get(r, []))} for r in resources}
+        now = self.clock()
+        for (f, r), t in list(self.flags.items()):
+            if now - t <= self.lease_sec:
+                snap.setdefault('flag:' + f, {'holder': None, 'queue': []})['queue'].append(r)
+        return snap
 
 
 class LocalLock:
@@ -80,6 +100,12 @@ class LocalLock:
     def release(self, resource):
         self.manager.release(resource, self.robot)
 
+    def flag(self, name, on=True):
+        self.manager.raise_flag(name, self.robot, on)
+
+    def others_flag(self, name):
+        return name in self.manager.flags_of_others(self.robot)
+
 
 class DashLink:
     """대시보드 서버와의 연결 (백그라운드 스레드, 표준 라이브러리만 사용).
@@ -87,6 +113,7 @@ class DashLink:
     - report(state): 최신 상태를 올린다. 응답으로 명령/파라미터/락 결과가 온다.
     - frame(jpeg): 디버그 영상을 올린다.
     - request()/release(): 락. 서버가 안 보이면 fail_open 값에 따라 통과/대기.
+    - flag()/others_flag(): 깃발. 서버가 안 보이면 다른 로봇의 깃발이 '올라가 있다'고 본다 (조심하는 쪽).
     제어 루프를 막지 않도록 네트워크는 전부 스레드에서 한다.
     """
 
@@ -103,6 +130,8 @@ class DashLink:
         self._want = {}                 # resource -> True(요청중)
         self._release = set()
         self._granted = {}
+        self._flags = set()             # 내가 올린 깃발
+        self._others = set()            # 다른 로봇이 올린 깃발 (서버 응답)
         self._params_version = -1
         self._mutex = threading.Lock()
         self._stop = threading.Event()
@@ -131,6 +160,14 @@ class DashLink:
                 self._release.add(resource)
             self._granted[resource] = False
 
+    def flag(self, name, on=True):
+        with self._mutex:
+            (self._flags.add if on else self._flags.discard)(name)
+
+    def others_flag(self, name):
+        with self._mutex:
+            return name in self._others if self.connected else True
+
     def close(self):
         self._stop.set()
 
@@ -144,7 +181,8 @@ class DashLink:
             t0 = time.time()
             with self._mutex:
                 body = {'robot': self.robot, 'state': self._state, 'want': list(self._want),
-                        'release': list(self._release), 'params_version': self._params_version}
+                        'release': list(self._release), 'flags': sorted(self._flags),
+                        'params_version': self._params_version}
                 self._release.clear()
                 jpeg, self._jpeg = self._jpeg, None
             try:
@@ -154,6 +192,7 @@ class DashLink:
                 with self._mutex:
                     self.connected = True
                     self._granted = {r: bool(g) for r, g in reply.get('granted', {}).items()}
+                    self._others = set(reply.get('flags', []))
                 for cmd in reply.get('commands', []):
                     if self.on_command:
                         self.on_command(cmd)

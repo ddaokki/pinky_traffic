@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--preview', default=None, help='라벨을 그린 그림을 저장할 폴더')
     args = parser.parse_args()
     cfg = Config.load(args.config)
+    cfg.lane_role = 0                        # 역할이 있으면 파란 선 마스크가 차선 자리에 들어간다. 라벨은 따로 만든다
     files = sorted(sum((glob.glob(os.path.join(args.images, ext)) for ext in ('*.jpg', '*.jpeg', '*.png')), []))
     if not files:
         raise SystemExit(f'사진이 없습니다: {args.images}')
@@ -45,6 +46,10 @@ def main():
         p, masks, small = detector.detect(image)
         if not p.crosswalk:
             masks['crosswalk'] = None
+        # 파란 유턴 표시 (uturn 클래스): 색으로 찾은 덩어리를 그대로 라벨로
+        blue = detector.color_mask(small, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
+        h, w = blue.shape[:2]
+        masks['uturn'] = blue if cv2.countNonZero(blue) >= cfg.route_min_area * w * h else None
         lines = masks_to_label(masks)
         view = draw_label(small, lines)
         if args.review:

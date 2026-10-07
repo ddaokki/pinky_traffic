@@ -73,7 +73,7 @@ def test_synthetic_labels_match_detector_classes(tmp_path):
     yaml_path = writer.finish()
     import yaml
     data = yaml.safe_load(open(yaml_path))
-    assert data['names'] == ['left', 'right', 'crosswalk'] and data['nc'] == 3
+    assert data['names'] == ['left', 'right', 'crosswalk', 'uturn'] and data['nc'] == 4   # 앞 3개 번호는 그대로
     assert (tmp_path / 'ds' / 'train' / 'labels' / 'a.txt').read_text().count('\n') == len(lines) - 1
 
 

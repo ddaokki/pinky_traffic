@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 
-CLASSES = ['left', 'right', 'crosswalk']   # YOLO 클래스 순서 (data.yaml 의 names 와 같아야 한다)
+CLASSES = ['left', 'right', 'crosswalk', 'uturn']   # YOLO 클래스 순서 (data.yaml 의 names 와 같아야 한다). uturn = 파란 유턴 표시
 
 
 @dataclass

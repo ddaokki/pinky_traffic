@@ -72,7 +72,14 @@ class Hub:
             for resource in body.get('release', []):
                 self.locks.release(resource, name)
             granted = {r: self.locks.request(r, name) for r in body.get('want', [])}
+            mine = set(body.get('flags', []))
+            for flag in mine:
+                self.locks.raise_flag(flag, name)
+            for (flag, robot) in list(self.locks.flags):
+                if robot == name and flag not in mine:
+                    self.locks.raise_flag(flag, name, False)
             reply = {'commands': self.commands.pop(name, []), 'granted': granted,
+                     'flags': self.locks.flags_of_others(name),
                      'params_version': self.params_version, 'params': None}
             if body.get('params_version') != self.params_version:
                 reply['params'] = dict(self.params)

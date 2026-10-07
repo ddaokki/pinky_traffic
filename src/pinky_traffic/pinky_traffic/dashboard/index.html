@@ -132,7 +132,8 @@ function render(s) {
   }
   const locks = Object.entries(s.locks);
   $('locks').innerHTML = locks.length ? locks.map(([res, l]) =>
-    `${res}: 통과 중 <b>${l.holder || '없음'}</b> · 대기 ${l.queue.length ? l.queue.join(', ') : '없음'}`).join('<br>') : '요청 없음';
+    res.startsWith('flag:') ? `깃발 ${res.slice(5)}: <b>${l.queue.join(', ')}</b> (오는 중)`
+    : `${res}: 통과 중 <b>${l.holder || '없음'}</b> · 대기 ${l.queue.length ? l.queue.join(', ') : '없음'}`).join('<br>') : '요청 없음';
   const current = {...s.defaults, ...s.params};
   if (!dragging) $('coord').checked = !!current.use_coordinator;
   if (!built.sliders) {

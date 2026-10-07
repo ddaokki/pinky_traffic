@@ -92,6 +92,28 @@ def test_lock_over_http_is_exclusive(server):
     b.close()
 
 
+def test_oncoming_flag_over_http(server):
+    url, hub, _ = server
+    a, b = DashLink(url, 'pinky1', hz=30), DashLink(url, 'pinky2', hz=30)
+    assert wait_for(lambda: a.connected and b.connected)
+    assert not b.others_flag('oncoming')
+    a.flag('oncoming')
+    assert wait_for(lambda: b.others_flag('oncoming'))            # 1차선 로봇이 올린 깃발이 2차선 로봇에게 보인다
+    assert not a.others_flag('oncoming')                          # 내 깃발은 나에게는 안 보인다
+    assert json.loads(get(url, '/api/state'))['locks']['flag:oncoming']['queue'] == ['pinky1']
+    a.flag('oncoming', False)
+    assert wait_for(lambda: not b.others_flag('oncoming'))
+    a.close()
+    b.close()
+
+
+def test_flag_assumed_up_when_server_unreachable():
+    link = DashLink('http://127.0.0.1:9', 'pinky2', hz=30)
+    time.sleep(0.2)
+    assert link.others_flag('oncoming') is True                   # 모르면 '온다'고 본다 (칸으로 비키는 쪽)
+    link.close()
+
+
 def test_lock_denied_when_server_unreachable():
     link = DashLink('http://127.0.0.1:9', 'pinky1', hz=30)       # 아무도 안 듣는 포트
     time.sleep(0.2)

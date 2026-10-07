@@ -1,6 +1,6 @@
 # 학습 방법
 
-목표: 로봇 카메라 영상에서 `left`(왼쪽 차선) `right`(오른쪽 차선) `crosswalk`(횡단보도)를 픽셀 단위로 찾는
+목표: 로봇 카메라 영상에서 `left`(왼쪽 차선) `right`(오른쪽 차선) `crosswalk`(횡단보도) `uturn`(파란 유턴 표시)을 픽셀 단위로 찾는
 YOLO11n-seg 모델 `models/best.pt`. 수업 Appendix 5·6 의 흐름(모으기 → 라벨링 → 학습 → 검증)을 그대로 따르되,
 라벨링을 손으로 하지 않고 색 검출 결과를 라벨로 쓴다.
 
@@ -78,10 +78,17 @@ python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pink
 4. 큰 모델 (`--model yolo11s-seg.pt`) — CPU 에서는 느려진다
 5. 배경 사진을 넣는다 (전체의 10% 안쪽)
 
-## 선택: 앞 로봇 인식 (`robot` 클래스)
+## `uturn` 클래스 (파란 유턴 표시)
 
-라이다가 없는 로봇으로 2대를 돌릴 때만. Roboflow 에서 4번째 클래스 `robot` 을 추가해 Pinky 뒷모습을 라벨링하고,
-`data.yaml` 의 names 를 `[left, right, crosswalk, robot]` 로 한다. `robot` 박스 아래 끝이 화면의 80% 아래로 내려오면 정지한다.
+`autolabel` 이 파란 테이프를 색으로 찾아 4번째 클래스 `uturn` 으로 같이 라벨링한다 (`data.yaml` names: `[left, right, crosswalk, uturn]`).
+1차선 로봇은 이게 보이면 서버에 `oncoming` 깃발을 올리고(2차선 로봇이 초록 칸으로 비킨다), 발밑까지 오면 그 선을 따라 유턴한다.
+`uturn` 이 없는 모델(예: `synth_best.pt`)이면 파란 선은 예전처럼 색으로 찾는다.
+
+## 선택: 로봇 인식 (`robot` 클래스)
+
+Roboflow 에서 5번째 클래스 `robot` 을 추가해 Pinky 를 라벨링하고, `data.yaml` 의 names 를 `[left, right, crosswalk, uturn, robot]` 로 한다.
+- `robot` 박스 아래 끝이 화면의 80% 아래로 내려오면 정지한다 (라이다가 없는 로봇용).
+- 2차선 로봇이 초록 칸에서 기다릴 때, 상대 로봇이 보였다가 사라지면 '지나갔다'로 보고 나온다 (라이다 전방 0.35m 안에 뭔가 지나가도 같다).
 
 ## 합성 데이터 (로봇 없이 파이프라인 확인용)
 
