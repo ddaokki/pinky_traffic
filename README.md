@@ -1,50 +1,65 @@
-# pinky_traffic — Pinky Pro 차선 주행 + 횡단보도 정지
+# pinky_traffic — Pinky Pro 차선 주행 · 횡단보도 정지 · 2대 순서 제어
 
-학원 바닥에 테이프로 차선과 횡단보도를 깔고, Pinky Pro 가 카메라로 차선을 따라 돌다가
-횡단보도 앞에서 멈췄다 가는 프로젝트. **1대로 먼저 시연**하고, 그다음 2대로 넓힌다.
+바닥에 테이프로 깐 차선을 Pinky Pro(ROS2 Jazzy)가 카메라로 보고 따라 달린다.
+횡단보도 앞에서는 멈췄다가 지나가고, 앞이 막히면 라이다로 선다.
+2대를 함께 달리게 하면 대시보드 서버가 갈림길과 횡단보도를 한 대씩 지나가도록 순서를 정해 준다.
 
 ```
-[로봇 Pinky Pro]                         [PC]
- bringup_robot.launch.xml  ── /scan ──▶  lane_driver  ──▶  /cmd_vel ──▶ 로봇 바퀴
- camera_pub.py ── /camera/image_raw/compressed ──▶   │
-                                                     │ HTTP (상태·영상·명령·락)
+[로봇 Pinky Pro ×2]                        [PC]
+ bringup_robot.launch.xml  ── /scan ──▶  lane_driver (로봇마다 1개) ──▶ /cmd_vel ──▶ 로봇 바퀴
+ camera_pub.py ── /camera/image_raw/compressed ──▶   │          └──▶ /set_led ──▶ 로봇 LED
+ led_server                                          │ HTTP (상태·영상·명령·락)
                                                      ▼
                                               dashboard (브라우저 localhost:8088)
 ```
 
-- 인식: `hsv`(색으로 찾기, 학습 없이 바로) 또는 `yolo`(YOLO11n-seg, 클래스 `left` `right` `crosswalk`)
-- 제어: PID 조향 + 상태 머신 (`lane_follow → approach_crosswalk → stop_at_crosswalk → crossing`, `blocked`, `lost`, `estop`)
-- 2대: 로봇마다 `ROS_DOMAIN_ID` 가 달라 서로 안 보인다. 횡단보도는 대시보드 서버의 락으로 한 대씩 통과, 추돌은 라이다 전방 거리로 막는다.
-- 시뮬레이터: ROS 없이 코스 그림을 카메라 시점으로 투시 변환해서 같은 코드를 돌린다.
+## 하는 일
+
+- **차선 따라가기**: 색(HSV)으로 테이프를 찾거나 학습한 YOLO11n-seg(`left` `right` `crosswalk`)로 찾는다. PID 로 조향한다.
+- **횡단보도**: 줄무늬를 보고 앞에서 3초 멈췄다가 지나간다.
+- **장애물**: 라이다 전방 거리가 가까우면 선다. 막혀 있어도 제자리 회전은 한다.
+- **2대 역할 나누기**
+  - 1차선 로봇은 파란 선을 따라 유턴한다.
+  - 2차선 로봇은 초록 칸으로 들어가 180도 돌고, 1차선 로봇이 지나간 뒤 따라 나온다.
+  - 순서는 대시보드 서버의 락으로 맞춘다. 두 로봇은 `ROS_DOMAIN_ID` 가 달라 ROS 로는 서로 안 보인다.
+- **LED**: 달리면 초록, 서 있으면 빨강, 통로 안에서는 통로 색.
+- **대시보드**: 로봇별 영상·상태, START/STOP/비상정지, 실시간 파라미터 슬라이더, 테스트케이스 기록.
+- **시뮬레이터**: ROS 없이 코스 그림을 카메라 시점으로 투시 변환해서 같은 제어 코드를 돌린다.
+
+## 실행
+
+### 로봇 2대 (한 번에)
+
+```bash
+scripts/start_all.sh     # 로봇 bringup·카메라·LED → 대시보드 → 주행 노드 2개 → 브라우저
+scripts/stop_all.sh      # 끄기
+```
+
+- 로봇 주소·도메인·차선 번호는 `scripts/start_all.sh` 맨 위 표에서 바꾼다.
+- 처음 한 번은 로봇 ssh 비밀번호를 물어보고, 그다음부터는 키로 접속한다.
+- 주행 노드는 대시보드에서 START 를 누르기 전에는 움직이지 않는다.
+- 하나씩 켜는 방법과 트랙 치수, 튜닝 표는 [docs/RUNBOOK.md](docs/RUNBOOK.md)에 있다.
+
+### 로봇 없이
+
+```bash
+source scripts/env.sh
+cd src/pinky_traffic && python3 -m pytest test -q && cd -     # 테스트
+
+python3 -m pinky_traffic.tools.run_sim                        # 시뮬레이션 창 (ESC 종료)
+python3 -m pinky_traffic.tools.run_sim --robots 2 --coordinator
+
+scripts/dashboard.sh                                          # 대시보드와 함께: 터미널 1
+python3 -m pinky_traffic.tools.run_sim --dashboard --robots 2 --coordinator   # 터미널 2 → localhost:8088 에서 START
+```
 
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
-| [docs/RUNBOOK.md](docs/RUNBOOK.md) | 내일 현장 순서 (트랙 깔기 → 1대 → 2대) |
-| [docs/TRAINING.md](docs/TRAINING.md) | 학습 방법 (사진 모으기 → 자동 라벨 → 학습 → 검증) |
-| [docs/TESTCASES.md](docs/TESTCASES.md) | 자동 테스트 48개 + 현장 테스트케이스 24개 |
-| [docs/PARALLEL.md](docs/PARALLEL.md) | Claude 를 병렬로 돌리는 법, 세션 공유 |
-| [docs/PROGRESS.md](docs/PROGRESS.md) | 진행 기록 (노션에 붙여 넣는 용) |
-
-## 지금 바로 (로봇 없이)
-
-```bash
-cd ~/pinky_traffic_ws
-source scripts/env.sh
-
-# 1) 테스트
-cd src/pinky_traffic && python3 -m pytest test -q && cd ~/pinky_traffic_ws
-
-# 2) 시뮬레이션을 창으로 보기 (ESC 종료)
-python3 -m pinky_traffic.tools.run_sim
-python3 -m pinky_traffic.tools.run_sim --robots 2 --coordinator
-
-# 3) 대시보드로 보기: 터미널 1
-scripts/dashboard.sh
-#    터미널 2  →  브라우저 http://localhost:8088 에서 START
-python3 -m pinky_traffic.tools.run_sim --dashboard --robots 2 --coordinator
-```
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | 트랙 깔기, 로봇 준비, 색 맞추기, 증상별 튜닝 |
+| [docs/TRAINING.md](docs/TRAINING.md) | YOLO 학습 (사진 모으기 → 자동 라벨 → 학습 → 검증) |
+| [docs/TESTCASES.md](docs/TESTCASES.md) | 자동 테스트와 현장 테스트케이스 |
 
 ## 폴더
 
@@ -57,7 +72,7 @@ src/pinky_traffic/
   pinky_traffic/tools/       capture · hsv_tuner · autolabel · make_synth_dataset · train · eval_detector · run_sim
   config/field.yaml          현장 설정 (★ 표시부터 맞춘다)
   test/                      pytest
-scripts/                     env.sh · dashboard.sh · drive.sh · robot_install.sh
+scripts/                     start_all · stop_all · env · dashboard · drive · robot_install
 colab/train_colab.py         Colab 학습 셀
 models/                      best.pt 를 두는 곳
 ```
