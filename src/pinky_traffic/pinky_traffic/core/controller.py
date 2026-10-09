@@ -533,7 +533,12 @@ class LaneController:
                 and self.action in ('right', 'left') and not self._after_long_sign():
             # 발밑 표지판이 화면 구석(옆)에 걸려도 물러난다 (2026-10-10: R2 가 오른쪽 아래 구석 x 0.8 이라 후진 없이 전진)
             close = [s for s in p.signs if abs(s[1]) <= cfg.sign_backoff_x and s[2] >= cfg.sign_backoff_far_row]
-            if close and self.backoff_run < cfg.sign_backoff_m:
+            # 가까운 표지판이 하나도 안 보여도 물러난다: 다음 표지판이 카메라 아래(발밑)로 들어가 있을 수 있다
+            # (2026-10-10 pinky1: R1 뒤 R2 가 화면에 아예 없어 후진 없이 전진, 멀리 있는 상대 로봇 바퀴를 표지판으로 쫓다 sign_hold)
+            # (정면 쪽에 표지판이 보이면 그건 앞에 있는 다음 표지판이니 물러나지 않는다)
+            ahead = any(abs(s[1]) <= cfg.sign_arrive_x and s[3] >= cfg.sign_search_row for s in p.signs)
+            blind = cfg.sign_backoff_blind and not ahead
+            if (close or blind) and self.backoff_run < cfg.sign_backoff_m:
                 self.backoff_run += cfg.v_min * dt
                 self.t_mode, self.t_backoff_end = now, None
                 return Command(-cfg.v_min, 0.0, SIGN_SEARCH, 'back up to see sign')

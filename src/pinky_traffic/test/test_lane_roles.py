@@ -156,7 +156,7 @@ def sign(kind, x=0.0, far=0.5, near=0.7):
 
 FAR_T, AT_T = sign('turn'), see()            # AT_* = 표지판 위에 올라타 화면에서 사라졌다
 FAR_S, AT_S = sign('straight_right'), see()
-SIGN = dict(sign_align_deg=0.0, sign_track_back_row=0.25, lane2_exit_m=0.0, sign_arrive_far_row=1.01, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
+SIGN = dict(sign_align_deg=0.0, sign_backoff_blind=False, sign_track_back_row=0.25, lane2_exit_m=0.0, sign_arrive_far_row=1.01, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
             sign_search_sec=6.0, junction_clear_sec=8.0)
 
 
@@ -1073,3 +1073,15 @@ def test_after_return_crosswalk_follows_left_line():
     assert c.crossings == 1 and c.prefer == 'left'                       # 건넌 뒤에는 왼쪽 선만
     cmd, t = run(c, see(), t, t + 5.0)
     assert c.prefer == ''
+
+
+def test_backoff_when_no_sign_visible_after_turn():
+    # 2026-10-10 pinky1: R1 뒤 R2 가 카메라 아래로 들어가 화면에 없었다 -> 물러나면 보인다
+    c = started(lane_role=1, **dict(SIGN, sign_backoff_m=0.12, sign_backoff_blind=True))
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    c.action = 'right'
+    cmd = c.step(see(signs=[('blue', 0.7, 0.42, 0.50)]), 1.0, 0.1)        # 멀리 다른 파랑(상대 로봇 바퀴)만 보인다
+    assert cmd.v < 0 and c.state == SIGN_SEARCH
+    cmd, t = run(c, see(signs=[('blue', 0.1, 0.60, 0.95)]), 0.1, 1.6)     # 물러나니 발밑에서 표지판이 올라온다
+    assert c.state == SIGN_APPROACH and c.target[1] == 0.1
