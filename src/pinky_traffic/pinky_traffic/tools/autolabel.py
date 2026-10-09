@@ -33,6 +33,7 @@ def main():
     args = parser.parse_args()
     cfg = Config.load(args.config)
     cfg.lane_role = 0                        # 역할이 있으면 파란 선 마스크가 차선 자리에 들어간다. 라벨은 따로 만든다
+    cfg.sign_shape = True                    # 라벨은 종류가 있어야 한다 (모양 구분은 틀리기 쉬우니 --review 로 고친다)
     files = sorted(sum((glob.glob(os.path.join(args.images, ext)) for ext in ('*.jpg', '*.jpeg', '*.png')), []))
     if not files:
         raise SystemExit(f'사진이 없습니다: {args.images}')
@@ -49,7 +50,7 @@ def main():
         if not p.crosswalk:
             masks['crosswalk'] = None
         # 파란 표지판 (turn / straight_right): 색으로 찾은 덩어리를 모양(길쭉한가)으로 나눠 라벨로. --review 로 꼭 확인
-        blue = detector.color_mask(small, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
+        blue = detector.blue_mask(small)
         n, labels = cv2.connectedComponents(blue)
         masks['turn'], masks['straight_right'] = np.zeros_like(blue), np.zeros_like(blue)
         for i in range(1, n):

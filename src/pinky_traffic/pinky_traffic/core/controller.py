@@ -181,7 +181,7 @@ class LaneController:
             return None
         kind = self.plan[self.plan_i][0]
         for sign in p.signs:
-            if kind in ('any', sign[0]):
+            if kind in ('any', sign[0]) or sign[0] == 'blue':     # 'blue' = 색으로 찾아 종류를 모른다 -> 가장 가까운 것
                 return sign
         return None
 
@@ -274,7 +274,7 @@ class LaneController:
             return None
         if not self.plan and not self.pocket_parked:
             first = 'turn' if cfg.lane_role == 1 else 'straight_right'
-            sign = next((s for s in p.signs if s[0] == first), None)
+            sign = next((s for s in p.signs if s[0] in (first, 'blue')), None)
             if sign is None:
                 return None
             if cfg.lane_role == 1 and not self._junction(True):

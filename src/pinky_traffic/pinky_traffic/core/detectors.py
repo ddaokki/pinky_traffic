@@ -15,7 +15,7 @@ from .perception import (LaneMemory, Perception, lane_from_masks, split_lane_mas
 
 def blue_signs(blue, cfg):
     """파란 마스크 -> 표지판 목록 [(종류, x, 먼 끝 행, 가까운 끝 행)] (가까운 것부터).
-    색만으로는 모양을 모르니, 길쭉하면(긴 ←→) 직우 양방향, 아니면 우회전 양방향으로 본다."""
+    종류는 'blue'(아무 표지판). cfg.sign_shape 이면 길쭉한 것(긴 ←→)은 직우 양방향, 아니면 우회전 양방향으로 본다."""
     h, w = blue.shape[:2]
     n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
     out = []
@@ -23,8 +23,10 @@ def blue_signs(blue, cfg):
         if stats[i, cv2.CC_STAT_AREA] < cfg.sign_min_area * w * h:
             continue
         ys, xs = np.nonzero(labels == i)
-        (_, _), (a, b), _ = cv2.minAreaRect(np.column_stack([xs, ys]).astype(np.float32))
-        kind = 'straight_right' if max(a, b) >= cfg.sign_long_ratio * max(1.0, min(a, b)) else 'turn'
+        kind = 'blue'
+        if cfg.sign_shape:
+            (_, _), (a, b), _ = cv2.minAreaRect(np.column_stack([xs, ys]).astype(np.float32))
+            kind = 'straight_right' if max(a, b) >= cfg.sign_long_ratio * max(1.0, min(a, b)) else 'turn'
         out.append((kind, float((xs.mean() - w / 2.0) / (w / 2.0)), float(ys.min() / (h - 1)), float(ys.max() / (h - 1))))
     return sorted(out, key=lambda s: -s[3])
 
@@ -47,6 +49,12 @@ class HsvDetector:
         mask = cv2.inRange(hsv, np.array(lo, np.uint8), np.array(hi, np.uint8))
         mask[: int(self.cfg.roi_top * frame.shape[0])] = 0
         return cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)   # 오프닝 = 작은 잡음 제거
+
+    def blue_mask(self, frame):
+        """파란 표지판 마스크. 햇빛에 하얗게 뜬 부분(blue_glare_*)도 넣는다."""
+        cfg = self.cfg
+        return self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi) | \
+            self.color_mask(frame, cfg.blue_glare_lo, cfg.blue_glare_hi)
 
     def local_bright_mask(self, frame):
         """주변보다 밝은 가는 띠 (그늘 속 흰 테이프). 원본 - 오프닝(가는 밝은 것을 지운 배경) 이 크면 띠."""
@@ -126,7 +134,7 @@ class HsvDetector:
         self.signs, self.zone_y = [], 0.0
         if not cfg.lane_role:
             return
-        self.signs = blue_signs(self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi), cfg)
+        self.signs = blue_signs(self.blue_mask(frame), cfg)
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         green = cv2.inRange(hsv, np.array(cfg.green_hsv_lo, np.uint8), np.array(cfg.green_hsv_hi, np.uint8))
         green[: int(cfg.zone_roi_top * h)] = 0

@@ -108,7 +108,13 @@ class Config:
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
-    sign_long_ratio: float = 3.0     # 색으로 찾을 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
+    sign_long_ratio: float = 3.0     # sign_shape 일 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
+    # 2026-10-09 현장: 카메라가 낮아(6.5cm) 바닥 표지판이 납작하게 보여 우회전 표지판도 길쭉하다 -> 모양 구분이 틀린다.
+    # 색으로 찾을 때는 종류를 정하지 않고('blue') 가장 가까운 표지판을 경로의 다음 표지판으로 본다. 종류 구분은 YOLO 가 한다.
+    sign_shape: bool = False
+    # 햇빛이 비친 파란 테이프는 S 25 안팎, V 220 으로 하얗게 뜬다 (카펫은 H 55 근처라 색상으로 갈린다). 밝은 곳에서 이 범위도 파랑으로 본다
+    blue_glare_lo: List[int] = field(default_factory=lambda: [88, 18, 170])
+    blue_glare_hi: List[int] = field(default_factory=lambda: [130, 255, 255])
 
     # ---------- 주차 통로 (흰 차선 끝에서 빨강/파랑 테이프로 이어지는 길) ----------
     route_color: str = ''            # '' (안 씀) | 'red' | 'blue' : 이 로봇이 따라갈 통로 색

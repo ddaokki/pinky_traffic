@@ -161,7 +161,7 @@ def test_blue_signs_classified_by_shape():
     cv2.line(img, (60, 200), (90, 110), BLUE, 6)                          # 길쭉한 화살표 -> 직우
     cv2.rectangle(img, (200, 150), (240, 175), BLUE, -1)                  # 뭉툭한 꺾인 화살표 -> 우회전
     cv2.rectangle(img, (200, 175), (215, 200), BLUE, -1)
-    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    p, _, _ = HsvDetector(Config(lane_role=1, sign_shape=True)).detect(img)
     kinds = sorted(s[0] for s in p.signs)
     assert kinds == ['straight_right', 'turn']
     turn = next(s for s in p.signs if s[0] == 'turn')
@@ -351,3 +351,19 @@ def test_two_robots_pass_each_other_at_pocket():
     assert a.plan_done and cb.state == WAIT_EXIT and b.saw_robot
     ca, cb = tick(see(), see(), 16)                                         # 1.5초 동안 안 보인다 -> 지나갔다
     assert b.exiting and b.plan_name == 'plan_lane2_exit'
+
+
+def test_color_signs_have_no_kind_and_count_as_next_sign():
+    img = floor()
+    cv2.rectangle(img, (200, 150), (240, 175), BLUE, -1)
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    assert [s[0] for s in p.signs] == ['blue']                            # 색으로는 종류를 정하지 않는다
+    c = started(lane_role=2, **SIGN)
+    assert c.step(p, 1.0, 0.1).state == SIGN_APPROACH and c.plan_name == 'plan_lane2'   # 2차선의 첫 표지판(직우)으로 본다
+
+
+def test_glare_washed_blue_is_still_blue():
+    img = floor()
+    cv2.rectangle(img, (200, 150), (240, 175), (230, 215, 190), -1)       # 햇빛에 하얗게 뜬 파랑 (H 약 98, S 약 45, V 230)
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    assert len(p.signs) == 1
