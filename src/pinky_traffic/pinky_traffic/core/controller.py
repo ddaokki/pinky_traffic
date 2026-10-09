@@ -237,7 +237,9 @@ class LaneController:
         kind = self.plan[self.plan_i][0]
         ok = [s for s in p.signs if kind in ('any', s[0]) or s[0] == 'blue']   # 'blue' = 종류를 모른다
         if tracking and self.target is not None:
-            near = [s for s in ok if abs(s[1] - self.target[1]) <= 0.5
+            # 이미 고른 표지판은 위치로만 따라간다. 모양 분류는 보는 각도에 따라 바뀐다
+            # (2026-10-10 pinky1: 물러나서 고른 R2 가 '직우'로 분류돼 다음 프레임에 바로 놓친 것으로 처리 -> sign_hold)
+            near = [s for s in p.signs if abs(s[1] - self.target[1]) <= 0.5
                     and s[3] >= self.target[3] - self.cfg.sign_track_back_row
                     and s[2] >= self.target[2] - self.cfg.sign_track_back_row]
             return min(near, key=lambda s: abs(s[1] - self.target[1]) + abs(s[2] - self.target[2])

@@ -901,3 +901,16 @@ def test_after_backoff_picks_near_front_sign_not_far_side_one():
     c.backoff_run = 0.09
     p = see(signs=[('straight_right', -0.25, 0.64, 0.84), ('turn', 0.87, 0.56, 0.70)])
     assert c._wanted_sign(p)[1] == -0.25
+
+
+def test_chosen_sign_is_tracked_by_position_not_kind():
+    # 2026-10-10 pinky1: 물러나서 고른 R2 가 모양 분류로는 '직우' -> 추적에서 빠져 바로 sign_hold
+    c = started(lane_role=1, **SIGN)
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    c.backoff_run, c.backoff_done = 0.09, True
+    p = see(signs=[('straight_right', -0.25, 0.64, 0.84)])
+    c.step(p, 1.0, 0.1)
+    assert c.state == SIGN_APPROACH
+    cmd, _ = run(c, p, 0.1, 2.5)
+    assert c.state == SIGN_APPROACH and cmd.v > 0                        # 계속 다가간다
