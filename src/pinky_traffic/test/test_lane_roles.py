@@ -820,11 +820,30 @@ def test_next_sign_too_close_backs_up_before_choosing_far_sign():
     c = started(lane_role=1, **dict(SIGN, sign_arrive_far_row=0.75, sign_backoff_m=0.04))
     c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
     c._go(SIGN_SEARCH, 0.0)
+    c.action = 'right'                                                   # 방금 제자리 회전을 했다
     p = see(signs=[('turn', 0.05, 0.76, 1.0), ('straight_right', 0.10, 0.45, 0.70)])
     cmd = c.step(p, 1.0, 0.1)
     assert cmd.state == SIGN_SEARCH and cmd.v < 0 and c.target is None
-    cmd, _ = run(c, p, 0.1, 1.2)
-    assert c.backoff_done and c.backoff_run >= 0.04
+    cmd, t = run(c, p, 0.1, 1.5)
+    assert c.backoff_run >= 0.04 and cmd.v == 0 and cmd.reason == 'look at sign'   # 물러난 뒤 멈춰서 본다
+    cmd, t = run(c, p, t, t + 1.0)
+    assert c.backoff_done and c.state == SIGN_APPROACH and c.target[1] == 0.05   # 바로 앞 표지판을 고른다
+
+
+def test_backoff_until_whole_sign_visible_and_kind_ignored():
+    # 2026-10-10 pinky1: R1 을 돈 뒤 R2 가 발밑에 잘려 보이고, 옆에서 본 화살표라 모양이 '직우'로 분류돼 놓쳤다
+    c = started(lane_role=1, **dict(SIGN, sign_backoff_m=0.12, sign_backoff_far_row=0.65, sign_backoff_settle_sec=0.8))
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    c.action = 'right'
+    cut = see(signs=[('straight_right', 0.0, 0.80, 1.0)])
+    cmd, t = run(c, cut, 0.0, 1.5)
+    assert cmd.v < 0 and 0.05 < c.backoff_run < 0.07                     # 4cm 를 넘어 계속 물러난다
+    whole = see(signs=[('straight_right', 0.0, 0.60, 0.92)])              # 표지판 전체가 보인다
+    cmd, t = run(c, whole, t, t + 0.5)
+    assert cmd.v == 0 and cmd.reason == 'look at sign'
+    cmd, t = run(c, whole, t, t + 0.6)
+    assert c.state == SIGN_APPROACH and c.target[0] == 'straight_right'   # 종류와 상관없이 바로 앞의 것
 
 
 def test_turn_sign_waits_until_blue_disappears():

@@ -155,6 +155,7 @@ class LaneController:
         self.t_walled = None                # 표지판 위에서 앞이 막힌 시각
         self.backoff_run = 0.0              # 회전 직후 너무 가까운 다음 표지판을 다시 보기 위해 후진한 거리
         self.backoff_done = False
+        self.t_backoff_end = None
         self.exit_run = 0.0                 # 1차선: R2 뒤 곧장 간 거리
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
         self.align_off = False              # 정면 맞추기를 건너뛰었다 (그래도 표지판 쪽으로는 간다)
@@ -242,6 +243,11 @@ class LaneController:
             return min(near, key=lambda s: abs(s[1] - self.target[1]) + abs(s[2] - self.target[2])
                        + abs(s[3] - self.target[3])) if near else None
         searching = self.state == SIGN_SEARCH or self.exiting
+        if searching and not self.exiting and self.backoff_run > 0:
+            # 물러나서 다시 본 바로 앞 표지판이 다음 표지판이다. 옆에서 본 화살표는 길쭉해 모양 분류가 틀리므로 종류를 안 따진다
+            front = [s for s in p.signs if abs(s[1]) <= self.cfg.sign_arrive_x and s[3] >= self.cfg.sign_gone_row]
+            if front:
+                return min(front, key=lambda s: abs(s[1]))
         if searching and not self.exiting:
             # 직전 회전 뒤 이미 발밑까지 지난 옆 표지판을 다음 순번으로 잡으면
             # 접근 없이 즉시 또 회전한다. 다음 표지판은 아직 도착선보다 앞에 있어야 한다.
@@ -422,7 +428,7 @@ class LaneController:
             self.events.append((now, f'{self.plan_name} done'))
             self._go(LANE_FOLLOW, now, 'plan done')
         else:
-            self.backoff_run, self.backoff_done = 0.0, False
+            self.backoff_run, self.backoff_done, self.t_backoff_end = 0.0, False, None
             self._go(SIGN_SEARCH, now, 'next sign')
 
     def _role_step(self, p, now, dt=0.0):
@@ -491,13 +497,23 @@ class LaneController:
             self._set_plan('plan_lane1' if cfg.lane_role == 1 else 'plan_lane2', now)
         # 회전 직후 다음 표지판이 카메라 바로 밑에 걸리면 모양 전체를 볼 수 없다.
         # 이때 먼 직우 표지를 다음 순번으로 고르지 말고, 한 번만 짧게 후진해 가까운 표지판을 다시 본다.
-        if self.state == SIGN_SEARCH and not self.exiting and not self.backoff_done and cfg.sign_backoff_m > 0:
-            close = [s for s in p.signs if abs(s[1]) <= cfg.sign_face_x and s[2] >= cfg.sign_arrive_far_row]
-            if close:
+        # (2026-10-10 pinky1: 4cm 로는 표지판 먼 끝이 여전히 화면 0.8 에 걸려 '앞에 있는 표지판'으로 안 잡히고, 바로 전진해 밟고 지나감
+        #  -> 표지판 전체가 보일 때까지(먼 끝이 sign_backoff_far_row 위로) 물러나고, 멈춰서 sign_backoff_settle_sec 동안 본 뒤 고른다)
+        # 직진으로 지난 표지판은 발밑에 남아 있는 게 정상이므로, 제자리 회전을 한 뒤에만 물러난다.
+        if self.state == SIGN_SEARCH and not self.exiting and not self.backoff_done and cfg.sign_backoff_m > 0 \
+                and self.action in ('right', 'left'):
+            close = [s for s in p.signs if abs(s[1]) <= cfg.sign_arrive_x and s[2] >= cfg.sign_backoff_far_row]
+            if close and self.backoff_run < cfg.sign_backoff_m:
                 self.backoff_run += cfg.v_min * dt
-                if self.backoff_run < cfg.sign_backoff_m:
+                self.t_mode, self.t_backoff_end = now, None
+                return Command(-cfg.v_min, 0.0, SIGN_SEARCH, 'back up to see sign')
+            if self.backoff_run > 0:
+                if self.t_backoff_end is None:
+                    self.t_backoff_end = now
+                    self.events.append((now, f'backed up {self.backoff_run:.2f}m'))
+                if now - self.t_backoff_end < cfg.sign_backoff_settle_sec:
                     self.t_mode = now
-                    return Command(-cfg.v_min, 0.0, SIGN_SEARCH, 'back up to see sign')
+                    return Command(0.0, 0.0, SIGN_SEARCH, 'look at sign')
                 self.backoff_done = True
                 self.t_mode = now
         sign = self._wanted_sign(p)

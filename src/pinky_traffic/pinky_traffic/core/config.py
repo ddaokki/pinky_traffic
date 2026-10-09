@@ -139,7 +139,9 @@ class Config:
                                      # 0.12 는 R1 에서 너무 가서 돈 뒤 R2 가 화면 오른쪽 끝에 걸려 못 찾음). 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 4.0     # 다음 표지판 탐색 제한. 넘으면 경로를 보존하고 정지
-    sign_backoff_m: float = 0.04     # 회전 직후 다음 표지판이 카메라 바로 밑이면 이만큼 후진해 전체 모양을 다시 본다
+    sign_backoff_m: float = 0.12     # 회전 직후 다음 표지판이 카메라 바로 밑이면 전체가 보일 때까지 후진 (최대 이만큼)
+    sign_backoff_far_row: float = 0.65   # 표지판 먼 끝이 이 행보다 위로 올라오면 다 보이는 것 -> 후진 끝
+    sign_backoff_settle_sec: float = 0.8 # 후진을 멈춘 뒤 이만큼 서서 표지판을 본 다음 고른다
     sign_track_back_row: float = 0.25  # 추적 중 표지판 끝이 갑자기 멀어지면 다른 표지판으로 본다
     sign_steer_w: float = 0.45       # 표지판 접근 조향 상한 (놓친 좌표로 급회전하지 않게)
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
