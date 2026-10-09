@@ -249,7 +249,7 @@ class LaneController:
             # 물러나서 다시 본 바로 앞 표지판이 다음 표지판이다. 옆에서 본 화살표는 길쭉해 모양 분류가 틀리므로 종류를 안 따진다
             # 물러난 뒤에는 표지판이 화면 위로 조금 올라가 있다 (2026-10-10: 가까운 끝 0.85 기준에 못 미쳐 오른쪽 먼 표지판을 골라 그쪽으로 돎)
             # -> 화면 가운데 쪽(|x| <= sign_arrive_x)에서 가장 가까운(아래) 것
-            front = [s for s in p.signs if abs(s[1]) <= self.cfg.sign_arrive_x and s[3] >= self.cfg.sign_start_row]
+            front = [s for s in p.signs if abs(s[1]) <= self.cfg.sign_backoff_x and s[3] >= self.cfg.sign_start_row]
             if front:
                 return max(front, key=lambda s: s[3])
         if searching and not self.exiting:
@@ -506,7 +506,8 @@ class LaneController:
         # 직진으로 지난 표지판은 발밑에 남아 있는 게 정상이므로, 제자리 회전을 한 뒤에만 물러난다.
         if self.state == SIGN_SEARCH and not self.exiting and not self.backoff_done and cfg.sign_backoff_m > 0 \
                 and self.action in ('right', 'left'):
-            close = [s for s in p.signs if abs(s[1]) <= cfg.sign_arrive_x and s[2] >= cfg.sign_backoff_far_row]
+            # 발밑 표지판이 화면 구석(옆)에 걸려도 물러난다 (2026-10-10: R2 가 오른쪽 아래 구석 x 0.8 이라 후진 없이 전진)
+            close = [s for s in p.signs if abs(s[1]) <= cfg.sign_backoff_x and s[2] >= cfg.sign_backoff_far_row]
             if close and self.backoff_run < cfg.sign_backoff_m:
                 self.backoff_run += cfg.v_min * dt
                 self.t_mode, self.t_backoff_end = now, None

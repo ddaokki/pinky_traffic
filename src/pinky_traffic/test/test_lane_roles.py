@@ -914,3 +914,13 @@ def test_chosen_sign_is_tracked_by_position_not_kind():
     assert c.state == SIGN_APPROACH
     cmd, _ = run(c, p, 0.1, 2.5)
     assert c.state == SIGN_APPROACH and cmd.v > 0                        # 계속 다가간다
+
+
+def test_backoff_also_for_sign_cut_at_bottom_corner():
+    # 2026-10-10 pinky1: R1 뒤 R2 가 오른쪽 아래 구석(x 0.8)에 잘려 보여 후진 없이 전진하다 놓침
+    c = started(lane_role=1, **dict(SIGN, sign_backoff_m=0.12))
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    c.action = 'right'
+    cmd = c.step(see(signs=[('straight_right', 0.8, 0.85, 1.0)]), 1.0, 0.1)
+    assert cmd.v < 0
