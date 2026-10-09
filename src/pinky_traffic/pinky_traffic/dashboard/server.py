@@ -46,6 +46,10 @@ class Hub:
         self.results_path = self.run_dir / 'testcase_results.json'
         self.results = json.loads(self.results_path.read_text()) if self.results_path.exists() else {}
         self.auto = AutoCheck()
+        # 로봇별 차선 역할을 기억해 둔다. 주행 노드가 다시 켜지면(역할이 0 으로 돌아감) 자동으로 다시 보낸다
+        # (2026-10-09: 노드를 다시 켠 뒤 역할 버튼을 안 눌러 표지판을 무시하고 흰 선만 따라감)
+        self.roles_path = self.run_dir.parent / 'roles.json'
+        self.roles = json.loads(self.roles_path.read_text()) if self.roles_path.exists() else {}
 
     @staticmethod
     def _load_testcases(path):
@@ -68,6 +72,11 @@ class Hub:
             if state.get('state') and state.get('state') != previous:
                 self.event(f"{name}: {previous} → {state['state']}")
             entry['state'], entry['t'] = state, now
+            want = self.roles.get(name)
+            if want and state.get('role') is not None and state.get('role') != want and state.get('state') == 'idle' \
+                    and f'lane{want}' not in self.commands.get(name, []):
+                self.commands.setdefault(name, []).append(f'lane{want}')
+                self.event(f'{name}: 기억해 둔 역할 {want}차선 다시 적용')
             for text in body.get('events', []):
                 self.event(f'{name}: {text}')
             for case_id, result, note in self.auto.update(name, state, body.get('events', []), self.robots, now):
@@ -123,7 +132,15 @@ class Hub:
             names = list(self.robots) if robot in ('all', None) else [robot]
             for name in names:
                 self.commands.setdefault(name, []).append(cmd)
+                if cmd in ('lane0', 'lane1', 'lane2'):
+                    self.roles[name] = int(cmd[-1])
+                    self.roles_path.write_text(json.dumps(self.roles))
             self.event(f'명령 {cmd} → {", ".join(names) or "(로봇 없음)"}')
+            if cmd == 'start':
+                for name in names:
+                    role = (self.robots.get(name, {}).get('state') or {}).get('role')
+                    if not role:
+                        self.event(f'⚠ {name} 역할 없음 — 표지판을 무시하고 흰 선만 따라갑니다 (1차선/2차선 버튼)')
 
     def set_params(self, values):
         with self.mutex:

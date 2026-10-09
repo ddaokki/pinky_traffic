@@ -157,3 +157,20 @@ def test_bad_request_does_not_kill_server(server):
     with pytest.raises(Exception):
         urllib.request.urlopen(req, timeout=2)
     assert json.loads(get(url, '/api/state'))['robots'] == {}
+
+
+def test_role_is_remembered_and_reapplied(server):
+    url, hub, run_dir = server
+    def rep(state):
+        return post(url, '/api/report', {'robot': 'pinky1', 'state': state, 'want': [], 'release': []})
+    rep({'state': 'idle', 'role': 0})
+    post(url, '/api/cmd', {'robot': 'pinky1', 'cmd': 'lane1'})
+    assert 'lane1' in rep({'state': 'idle', 'role': 0})['commands']        # 버튼 명령이 간다
+    rep({'state': 'idle', 'role': 1})
+    assert rep({'state': 'idle', 'role': 1})['commands'] == []             # 맞으면 그대로
+    reply = rep({'state': 'idle', 'role': 0})                            # 주행 노드를 다시 켰다
+    assert 'lane1' in reply['commands']                                  # 기억해 둔 역할을 다시 보낸다
+    post(url, '/api/cmd', {'robot': 'pinky1', 'cmd': 'lane0'})
+    rep({'state': 'idle', 'role': 0})
+    post(url, '/api/cmd', {'robot': 'all', 'cmd': 'start'})
+    assert any('역할 없음' in e['text'] for e in json.loads(get(url, '/api/state'))['events'])
