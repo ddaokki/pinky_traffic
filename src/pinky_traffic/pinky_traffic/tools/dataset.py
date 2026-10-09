@@ -66,7 +66,7 @@ class DatasetWriter:
 
 def draw_label(image, lines):
     """라벨을 그림 위에 그려 눈으로 검수."""
-    colors = [(255, 120, 0), (0, 160, 255), (0, 255, 255), (255, 0, 255), (60, 200, 60)]
+    colors = [(255, 120, 0), (0, 160, 255), (0, 255, 255), (255, 0, 255), (60, 200, 60), (60, 60, 255)]
     out = image.copy()
     h, w = out.shape[:2]
     for line in lines:
