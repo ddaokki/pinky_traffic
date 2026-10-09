@@ -238,6 +238,7 @@ class Config:
     lane2_start_delay_sec: float = 0.0   # START 를 받은 2차선 로봇이 이만큼 기다렸다 출발 (현장은 field.yaml 에서 3초: 1차선이 먼저 진입하게)
     robot_mask_conf: float = 0.5     # YOLO 'robot' 이 이 신뢰도 이상이면 그 영역의 파랑은 표지판에서 뺀다
     robot_mask_pad: float = 0.25     # 로봇 박스를 가로·세로 이 비율만큼 넓혀서 뺀다
+    pocket_late_sec: float = 2.0     # 2차선: 직우를 직진으로 지난 뒤 이 시간 안에 1차선 신호가 오면 그 자리에서 우회전해 칸으로
     crosswalk_lock: bool = False     # True 면 횡단보도를 한 대씩 통과 (서버 락). 기본은 각자 멈췄다 간다
     wall_from_top: bool = True       # 화면 맨 위부터 이어져 내려오는 흰색(벽 면)은 차선에서 뺀다
     lane_wall_band: float = 0.18     # 그 아래 이만큼(영상 높이 비율) 안에서도 lane_wall_base 보다 넓게 흰 행은 벽 밑단으로 지운다

@@ -975,3 +975,18 @@ def test_lane2_starts_three_seconds_late():
     c1 = LaneController(Config(lane_role=1, lane2_start_delay_sec=3.0))
     c1.start(10.0)
     assert c1.step(see(), 1.0, 10.1).v > 0                                # 1차선은 바로 출발
+
+
+def test_lane2_switches_to_pocket_when_flag_arrives_right_after_deciding_straight():
+    # 현장 요청: 직우에서 직진으로 정한 직후 1차선 신호가 오면 바로 우회전(칸)으로
+    clock = Clock()
+    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, **POCKET)
+    run_flag(c, clock, see(), 0.1)
+    run_flag(c, clock, FAR_S, 0.2)
+    run_flag(c, clock, sign('straight_right', far=0.85, near=1.0), 0.3)
+    run_flag(c, clock, see(), 2.0)                                        # 사라짐 -> 1초 기다림 -> 직진으로 결정
+    assert c.state == SIGN_ADVANCE and c.action == 'straight'
+    run_flag(c, clock, see(), clock.t + 0.2, flag=True)                   # 이제 1차선 신호가 들어온다
+    assert c.plan_name == 'plan_lane2_pocket' and c.action == 'right'
+    run_flag(c, clock, see(), clock.t + 9.0, flag=True)
+    assert c.pocket_mode                                                  # 우회전해서 칸으로

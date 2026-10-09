@@ -711,6 +711,17 @@ class LaneController:
             self._flag2(True)                         # 표지판 기동 중에도 '2차선 진행 중' 깃발을 계속 올린다 (안 부르면 4초 뒤 사라진다)
         if self.state == SIGN_HOLD:
             return Command(0.0, 0.0, SIGN_HOLD, 'sign lost: reposition and START')
+        if cfg.lane_role == 2 and self.plan_name == 'plan_lane2' and not self.plan_done and self._oncoming():
+            # 직우에서 '직진'으로 정한 직후에 1차선 신호가 들어왔다 -> 바로 칸 쪽 우회전으로 바꾼다 (현장 요청: 타이밍이 어긋나 사고)
+            late = self.state == SIGN_ADVANCE and self.plan_i == 0 and self.action == 'straight'
+            just = self.state == SIGN_SEARCH and self.plan_i == 1 and now - self.t_mode < cfg.pocket_late_sec
+            if late or just:
+                self._junction(True)
+                self._set_plan('plan_lane2_pocket', now)
+                self.action = 'right'
+                self.events.append((now, 'late oncoming -> pocket'))
+                if just:
+                    self._go(SIGN_TURN, now, 'right (late)')
         if self.state == POCKET_END:
             self.advance += cfg.v_min * dt
             if self.advance < cfg.zone_advance_m:
@@ -773,6 +784,13 @@ class LaneController:
                 cmd = self._square_up(sign, p, now, dt)
                 if cmd is not None:
                     return cmd
+            if sign is None and self.target is not None and abs(self.target[1]) > cfg.sign_arrive_x and not self.exiting:
+                # 옆으로 빠진 표지판을 찾으려고 도는 중: 같은 쪽에 다시 보이면 (추적 조건과 상관없이) 바로 다시 잡는다
+                # (2026-10-10 pinky2: 다시 보였는데 못 잡고 3초 내내 돌아 엉뚱한 방향을 보고 sign_hold)
+                cand = [s for s in p.signs if s[1] * self.target[1] > 0 and s[3] >= cfg.sign_start_row]
+                if cand:
+                    sign = max(cand, key=lambda s: s[3])
+                    self.target, self.t_target, self.t_yolo = sign, now, now
             arrived = False
             expected_kind = self.plan[self.plan_i][0] if self.plan_i < len(self.plan) else ''
             distance_stop = expected_kind in ('straight_right', 'any')
