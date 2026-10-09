@@ -198,7 +198,9 @@ class LaneController:
         if want:
             self.junction_held = bool(self.lock.request(cfg.junction_resource)) if cfg.use_coordinator else True
             return self.junction_held
-        if self.junction_held and cfg.use_coordinator:
+        # 허가를 못 받은 채 요청만 걸어 둔 경우에도 반드시 취소한다. 안 그러면 요청이 남아 나중에 락을 받아 쥐고 놓지 않는다
+        # (2026-10-10: 칸에 들어간 2차선이 락을 쥔 채 대기, 1차선은 R1 위에서 'junction busy' 로 서로 멈춤)
+        if cfg.use_coordinator:
             self.lock.release(cfg.junction_resource)
         self.junction_held = False
         return True

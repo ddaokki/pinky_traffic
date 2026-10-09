@@ -1085,3 +1085,17 @@ def test_backoff_when_no_sign_visible_after_turn():
     assert cmd.v < 0 and c.state == SIGN_SEARCH
     cmd, t = run(c, see(signs=[('blue', 0.1, 0.60, 0.95)]), 0.1, 1.6)     # 물러나니 발밑에서 표지판이 올라온다
     assert c.state == SIGN_APPROACH and c.target[1] == 0.1
+
+
+def test_ungranted_junction_request_is_cancelled_on_release():
+    # 2026-10-10: 2차선이 허가 못 받은 요청을 취소하지 않아 칸에서 락을 쥐고, 1차선은 R1 에서 계속 기다림
+    clock = Clock()
+    a = LocalLock(clock.mgr, 'a'); b = LocalLock(clock.mgr, 'b')
+    ca = LaneController(Config(lane_role=1, use_coordinator=True), a)
+    cb = LaneController(Config(lane_role=2, use_coordinator=True), b)
+    assert ca._junction(True)                                            # 1차선이 먼저 쥐었다
+    assert not cb._junction(True)                                        # 2차선은 줄만 섰다 (허가 못 받음)
+    cb._junction(False)                                                  # 칸에 들어가 반납(취소)
+    ca._junction(False)
+    assert clock.mgr.snapshot().get('junction', {}).get('holder') is None
+    assert ca._junction(True)                                            # 1차선이 다시 바로 받는다
