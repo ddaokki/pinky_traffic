@@ -118,6 +118,7 @@ class LaneController:
         self.last_offset = None             # 직전 프레임의 차선 중심 (한 프레임 튐 거르기)
         self.side_alert = False             # 옆 물체를 피하는 중
         self.cw_hits = 0                    # 정지 행 앞에서 횡단보도가 연속으로 보인 프레임 수
+        self.held = False                   # 안전 정지 중 (앞·옆이 너무 가깝다)
         self.cw_first_y = 1.0
         self.intrude_dir, self.intrude_until = 0, -1.0   # 시연용 끼어들기 (+1 오른쪽, -1 왼쪽)
         self.no_lidar = False
@@ -375,7 +376,26 @@ class LaneController:
             return Command(0.0, 0.0, self.state, 'no lidar')
         self.no_lidar = False
         cmd = self._step(p, front_m, now)
-        return self._side_guard(cmd, sides, now)
+        cmd = self._side_guard(cmd, sides, now)
+        return self._safety_hold(cmd, front_m, sides, now)
+
+    def _safety_hold(self, cmd, front_m, sides, now):
+        """어떤 상태든 마지막에: 앞이나 옆이 너무 가까우면 전진만 멈춘다 (회전은 그대로 = 기동이 깨지지 않는다).
+        (2026-10-09: 표지판 기동 중에는 장애물·옆구리 검사가 아예 안 돌아 두 대가 갈림길에서 부딪힐 뻔했다)"""
+        cfg = self.cfg
+        if cmd.v <= 0:
+            self.held = False
+            return cmd
+        near_front = front_m is not None and front_m < cfg.hold_front_m
+        near_side = bool(sides) and any(d is not None and d < cfg.side_stop_m for d in sides)
+        if not (near_front or near_side):
+            self.held = False
+            return cmd
+        why = f'hold front {front_m:.2f}' if near_front else 'hold side ' + '/'.join('-' if d is None else f'{d:.2f}' for d in sides)
+        if not self.held:
+            self.events.append((now, why))
+        self.held = True
+        return Command(0.0, cmd.w, cmd.state, why)
 
     def _side_guard(self, cmd, sides, now):
         """옆구리 침범 막기: 측면 side_slow_m 안에 뭔가 있으면 반대쪽으로 조향하고 속도를 줄인다. side_stop_m 안이면 전진은 멈춘다.

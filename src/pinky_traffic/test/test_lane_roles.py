@@ -450,3 +450,13 @@ def test_one_frame_offset_jump_is_ignored():
     c.step(see(offset=1.5), 1.0, 0.7)
     cmd = c.step(see(offset=1.5), 1.0, 0.8)
     assert cmd.w < -0.5                                                  # 계속 그러면 믿는다
+
+
+def test_green_blob_is_not_the_zone_bar():
+    img = lanes(floor())
+    cv2.circle(img, (160, 200), 14, GREEN, -1)                            # LED 초록빛 (둥근 얼룩)
+    p, _, _ = HsvDetector(Config(lane_role=2)).detect(img)
+    assert not p.zone_seen
+    cv2.line(img, (95, 190), (225, 190), GREEN, 10)                       # 가로 띠
+    p, _, _ = HsvDetector(Config(lane_role=2)).detect(img)
+    assert p.zone_seen

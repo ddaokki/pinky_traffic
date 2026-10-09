@@ -154,9 +154,14 @@ class HsvDetector:
         green = cv2.inRange(hsv, np.array(cfg.green_hsv_lo, np.uint8), np.array(cfg.green_hsv_hi, np.uint8))
         green[: int(cfg.zone_roi_top * h)] = 0
         green = cv2.morphologyEx(green, cv2.MORPH_OPEN, self.kernel)
-        if cv2.countNonZero(green) >= cfg.route_min_area * w * h:
-            self.zone_y = float(np.flatnonzero(green.any(axis=1)).max() / (h - 1))
-            self.zone_x = float((np.nonzero(green)[1].mean() - w / 2.0) / (w / 2.0))
+        n, labels, st, _ = cv2.connectedComponentsWithStats(green, connectivity=8)
+        bars = [i for i in range(1, n) if st[i, cv2.CC_STAT_AREA] >= cfg.route_min_area * w * h
+                and st[i, cv2.CC_STAT_WIDTH] >= cfg.zone_min_width * w
+                and st[i, cv2.CC_STAT_HEIGHT] <= cfg.zone_max_aspect * st[i, cv2.CC_STAT_WIDTH]]
+        if bars:
+            bar = labels == max(bars, key=lambda i: st[i, cv2.CC_STAT_AREA])
+            self.zone_y = float(np.flatnonzero(bar.any(axis=1)).max() / (h - 1))
+            self.zone_x = float((np.nonzero(bar)[1].mean() - w / 2.0) / (w / 2.0))
 
     def detect(self, frame):
         t0 = time.perf_counter()
@@ -202,10 +207,10 @@ def load_yolo(cfg):
 
 
 def yolo_objects(r, names, h, w, cfg):
-    """YOLO 결과 -> (표지판 목록, 발표용 물체 목록, robot 아래 끝 행, 클래스별 마스크)."""
+    """YOLO 결과 -> (표지판 목록, 발표용 물체 목록, robot 아래 끝 행, 클래스별 마스크, [(표지판, 물체)] 짝)."""
     masks = {name: np.zeros((h, w), np.uint8) for name in ('left', 'right', 'crosswalk', 'lane', 'robot')}
     obstacle_y = 0.0
-    signs, objects = [], []
+    signs, objects, pairs = [], [], []
     if r.boxes is not None and len(r.boxes):
         classes = r.boxes.cls.cpu().numpy().astype(int)
         polys = r.masks.xy if r.masks is not None else [None] * len(classes)
@@ -213,18 +218,22 @@ def yolo_objects(r, names, h, w, cfg):
         confs = r.boxes.conf.cpu().numpy() if hasattr(r.boxes, 'conf') else [None] * len(classes)
         for poly, cls_id, box, conf in zip(polys, classes, boxes, confs):
             name = names.get(int(cls_id), str(cls_id))
+            obj = None
             if (name in SIGNS or name == 'robot') and poly is not None and len(poly) >= 3:
-                obj = np.zeros((h, w), np.uint8)
-                cv2.fillPoly(obj, [np.asarray(poly, np.int32)], 255)
-                objects.append((name, None if conf is None else float(conf), obj))   # 화면에는 학습한 이름 그대로
+                mask = np.zeros((h, w), np.uint8)
+                cv2.fillPoly(mask, [np.asarray(poly, np.int32)], 255)
+                obj = (name, None if conf is None else float(conf), mask)
+                objects.append(obj)                      # 화면에는 학습한 이름 그대로
             if name == 'robot' and (conf is None or conf >= cfg.robot_conf):
                 obstacle_y = max(obstacle_y, float(box[3] / (h - 1)))
             if name in SIGNS:
-                signs.append((name if cfg.sign_use_kind else 'blue', float(((box[0] + box[2]) / 2 - w / 2.0) / (w / 2.0)),
-                              float(box[1] / (h - 1)), float(box[3] / (h - 1))))
+                sign = (name if cfg.sign_use_kind else 'blue', float(((box[0] + box[2]) / 2 - w / 2.0) / (w / 2.0)),
+                        float(box[1] / (h - 1)), float(box[3] / (h - 1)))
+                signs.append(sign)
+                pairs.append((sign, obj, None if conf is None else float(conf)))
             if name in masks and poly is not None and len(poly) >= 3:
                 cv2.fillPoly(masks[name], [np.asarray(poly, np.int32)], 255)
-    return sorted(signs, key=lambda s: -s[3]), objects, obstacle_y, masks
+    return sorted(signs, key=lambda s: -s[3]), objects, obstacle_y, masks, pairs
 
 
 class HybridDetector(HsvDetector):
@@ -246,7 +255,17 @@ class HybridDetector(HsvDetector):
         h, w = frame.shape[:2]
         if self.n % max(1, int(cfg.yolo_every)) == 0:
             r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
-            self.last = yolo_objects(r, self.names, h, w, cfg)[:3]
+            _, objects, obstacle_y, _, pairs = yolo_objects(r, self.names, h, w, cfg)
+            blue = self.blue_mask(frame) > 0
+            keep = []
+            for sign, obj, conf in pairs:                # 실제 파랑이 들어 있는 표지판만 (흰 선 오인 거르기)
+                if obj is None or (conf is not None and conf < cfg.sign_conf):
+                    continue
+                area = obj[2] > 0
+                if float((blue & area).sum()) / max(1, int(area.sum())) >= cfg.sign_blue_frac:
+                    keep.append((sign, obj))
+            objects = [o for o in objects if o[0] not in SIGNS] + [o for _, o in keep]
+            self.last = (sorted([s for s, _ in keep], key=lambda s: -s[3]), objects, obstacle_y)
         self.n += 1
         masks, found = self.masks(frame)
         self.role_marks(frame)                   # 초록 선 (+ 색으로 찾은 표지판)
@@ -278,7 +297,7 @@ class YoloDetector:
         frame = resize_to(frame, cfg.proc_width)
         h, w = frame.shape[:2]
         r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
-        signs, objects, obstacle_y, masks = yolo_objects(r, self.names, h, w, cfg)
+        signs, objects, obstacle_y, masks, _ = yolo_objects(r, self.names, h, w, cfg)
         top = int(cfg.roi_top * h)
         for name in ('left', 'right', 'lane'):
             masks[name][:top] = 0

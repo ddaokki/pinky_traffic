@@ -78,6 +78,7 @@ class Config:
     side_push_w: float = 0.8         # 피하는 회전 세기 (rad/s, 가까울수록 이만큼까지)
     intrude_offset: float = 0.6      # 시연용 끼어들기: 차선 중심을 이만큼 옆으로 밀어 본다 (약 13cm)
     intrude_sec: float = 4.0
+    hold_front_m: float = 0.15       # 어떤 상태든 앞이 이보다 가까우면 전진만 멈춘다 (표지판 기동·칸 안 포함)
     require_lidar: bool = True       # 라이다가 lidar_timeout_sec 넘게 안 오면 바퀴를 세운다
     lidar_timeout_sec: float = 1.5
 
@@ -140,6 +141,12 @@ class Config:
     # YOLO 표지판 종류를 경로 판단에 쓸지. False 면 YOLO 가 찾은 표지판도 종류 없이('blue') 가장 가까운 것을 다음 표지판으로 본다
     # (2026-10-09 best_1009.pt: 표지판 라벨을 모양으로 자동 생성해 turn/straight_right 가 뒤바뀌어 학습됨 -> 라벨을 고칠 때까지 False)
     sign_use_kind: bool = False
+    # YOLO 표지판은 실제 파랑이 들어 있어야 인정한다 (2026-10-09: 흰 차선 한 토막을 straight_right 0.52 로 보고 다가감)
+    sign_conf: float = 0.5           # 이 신뢰도 이상
+    sign_blue_frac: float = 0.15     # YOLO 가 칠한 영역 중 이 비율 이상이 파랑(blue_mask)
+    # 초록 칸 끝 선은 가로로 긴 띠만 (2026-10-09: 주행 중 LED 초록빛이 바닥에 비친 것)
+    zone_min_width: float = 0.15     # 영상 폭의 이 비율 이상
+    zone_max_aspect: float = 0.6     # 높이 / 폭 이 이하
     # 햇빛이 비친 파란 테이프는 S 25 안팎, V 220 으로 하얗게 뜬다 (카펫은 H 55 근처라 색상으로 갈린다). 밝은 곳에서 이 범위도 파랑으로 본다
     # 2026-10-09: 초록 선이 park_line_row(0.80)에 오면 카메라 앞 약 14cm 다 (높이 6.5cm, 8도 숙임).
     # 거기서 바로 돌면 칸 입구에 너무 가까워 지나가는 로봇이 화면을 꽉 채운다 -> 이만큼 더 가서 초록 선 위에서 돈다

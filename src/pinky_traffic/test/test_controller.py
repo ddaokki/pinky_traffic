@@ -183,7 +183,21 @@ def test_intrude_demo_drifts_toward_neighbor_and_ignores_own_guard():
     c = started()
     c.step(lane(), None, 0.1)
     c.intrude(+1, 0.1)
-    cmd = c.step(lane(), None, 0.2, sides=(0.30, 0.06))
+    cmd = c.step(lane(), None, 0.2, sides=(0.30, 0.08))
     assert cmd.w < -0.3 and cmd.reason == 'intrude'                       # 오른쪽(옆 차선)으로 붙는다, 자기는 안 비킨다
-    cmd = c.step(lane(), None, 4.3, sides=(0.30, 0.06))
+    cmd = c.step(lane(), None, 4.3, sides=(0.30, 0.08))
     assert cmd.reason.startswith('side R') and cmd.w > cmd.w - 1          # 4초 뒤에는 다시 비킨다
+
+
+def test_safety_hold_in_sign_maneuver():
+    # 표지판으로 다가가는 중에도 앞·옆이 너무 가까우면 전진은 멈춘다 (회전은 그대로)
+    c = LaneController(Config(lane_role=1, hold_front_m=0.15, side_stop_m=0.07))
+    c.start(0.0)
+    c.step(lane(), 1.0, 0.1)
+    sign = lane(); sign.signs = [('blue', 0.3, 0.5, 0.7)]
+    assert c.step(sign, 1.0, 0.2).state == 'sign_approach'
+    cmd = c.step(sign, 0.12, 0.3)
+    assert cmd.state == 'sign_approach' and cmd.v == 0 and cmd.reason.startswith('hold front')
+    cmd = c.step(sign, 1.0, 0.4, sides=(0.05, 0.5))
+    assert cmd.v == 0 and cmd.reason.startswith('hold side')
+    assert c.step(sign, 1.0, 0.5, sides=(0.3, 0.3)).v > 0
