@@ -2,6 +2,7 @@
 
 ROS 노드(nodes/lane_driver.py)와 시뮬레이터(tools/run_sim.py --dashboard)가 같이 쓴다.
 """
+import math
 import os
 import threading
 import time
@@ -79,7 +80,7 @@ class Driver:
                 self.cfg.lane_role = int(item[-1])
                 self.log(f'[{self.name}] 차선 역할 = {self.cfg.lane_role}')
 
-    def process(self, frame, front_m=None, now=None, sides=None, lidar_ok=True):
+    def process(self, frame, front_m=None, now=None, sides=None, lidar_ok=True, yaw=None):
         """영상 한 장 -> Command. 디버그 그림은 self.debug 에 남긴다."""
         now = time.time() if now is None else now
         if self.autostart:
@@ -90,7 +91,7 @@ class Driver:
         self.detector.follow_zone = self.controller.pocket_mode
         self.detector.prefer = self.controller.prefer      # 갈림길에서 어느 쪽 선을 따라갈지
         p, masks, small = self.detector.detect(frame)
-        cmd = self.controller.step(p, front_m, now, sides, lidar_ok)
+        cmd = self.controller.step(p, front_m, now, sides, lidar_ok, yaw)
         if self._t_prev is not None and now > self._t_prev:
             self.fps = 0.9 * self.fps + 0.1 / (now - self._t_prev) if self.fps else 1.0 / (now - self._t_prev)
         self._t_prev = now
@@ -112,7 +113,7 @@ class Driver:
                  'crosswalk': p.crosswalk, 'crosswalk_y': round(p.crosswalk_y, 2),
                  'front': None if front_m is None else round(front_m, 2), 'fps': round(self.fps, 1),
                  'side_l': None if not sides or sides[0] is None else round(sides[0], 2),
-                 'side_r': None if not sides or sides[1] is None else round(sides[1], 2), 'lidar': lidar_ok,
+                 'side_r': None if not sides or sides[1] is None else round(sides[1], 2), 'lidar': lidar_ok, 'yaw': None if yaw is None else round(math.degrees(yaw), 1),
                  'ms': round(p.ms, 1), 'backend': 'hsv+yolo' if self.model else 'hsv(sim)', 'reason': cmd.reason,
                  'crossings': self.controller.crossings,
                  'route': self.controller.in_route, 'route_seen': p.route_seen,

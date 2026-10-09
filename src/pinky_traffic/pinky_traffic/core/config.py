@@ -129,7 +129,7 @@ class Config:
     # 경로 = "표지판종류:행동" 을 만나는 순서대로 쉼표로. 행동 right|left|straight. 다 지나면 흰 차선을 따라간다.
     plan_lane1: str = 'turn:right, turn:right:0.12, straight_right:straight'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진. 세 번째 칸 = 그 표지판만의 sign_advance_m
     plan_lane2: str = 'straight_right:straight, turn:left, turn:left'      # 2차선, 상대가 안 온다: S 직진 -> 좌 -> 좌 (=유턴, 1차선으로)
-    plan_lane2_pocket: str = 'straight_right:right'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
+    plan_lane2_pocket: str = 'straight_right:right:0.03'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
     plan_lane2_exit: str = 'any:right, turn:left, turn:left'               # 칸에서 나와: 입구의 표지판(직우 가지)에서 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
     sign_stop_row: float = 0.80      # (2026-10-09 부터 안 씀) 예전: 표지판 먼 끝이 이 행에 오면 도착
     # 표지판을 따라가다 화면에서 완전히 사라지면 '도착' (가까운 끝이 sign_gone_row 아래까지 왔다가 sign_gone_sec 동안 안 보임)
@@ -172,6 +172,8 @@ class Config:
     sign_blue_dx: float = 0.7        # 쫓던 표지판과 가로로 이만큼 안의 파랑만
     sign_blue_sec: float = 4.0       # YOLO 가 이보다 오래 못 보면 색만 남아 있어도 도착으로 본다
     crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
+    lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다
+    turn_lead_deg: float = 5.0       # 오도메트리로 돌 때 목표보다 이만큼 일찍 멈춘다 (멈추는 동안 더 돈다)
     sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
     sign_align_plans: str = 'plan_lane2'   # 정면 맞추기를 하는 경로 (1차선은 S 를 U턴 직후 발밑에서 보므로 안 한다)
     sign_align_near_row: float = 0.75   # 표지판 가까운 끝이 이 행 아래로 오면 (= 바로 앞) 멈추고 맞춘다

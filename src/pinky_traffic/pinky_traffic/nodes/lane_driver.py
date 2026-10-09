@@ -19,6 +19,7 @@ import numpy as np
 import rclpy
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.signals import SignalHandlerOptions
@@ -117,6 +118,8 @@ class LaneDriverNode(Node):
         if get('use_scan'):
             self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(Float32, 'battery/voltage', self.on_battery, qos_profile_sensor_data)
+        self.yaw, self.t_odom = None, 0.0
+        self.create_subscription(Odometry, 'odom', self.on_odom, 10)          # 제자리 회전 각도 재기 (bringup 이 30Hz 로 낸다)
         self.create_timer(0.1, self.watchdog)
         self.led_client, self.led_now, self.led_warned = None, None, False
         if get('use_led'):
@@ -128,6 +131,11 @@ class LaneDriverNode(Node):
                 self.get_logger().warn('pinky_interfaces 가 없어 LED 는 끈다 (source ~/pinky/install/setup.bash)')
         self.get_logger().info(f"lane_driver: robot={get('robot')} weights={self.cfg.weights} lane_role={self.cfg.lane_role} "
                                f"image={get('image_topic')} dashboard={self.cfg.dashboard_url if get('use_dashboard') else 'off'}")
+
+    def on_odom(self, msg):
+        q = msg.pose.pose.orientation
+        self.yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        self.t_odom = time.time()
 
     def on_battery(self, msg):
         self.driver.battery = round(float(msg.data), 2)
@@ -155,7 +163,8 @@ class LaneDriverNode(Node):
         fresh = now - self.t_scan < 1.0                               # 오래된 라이다 값은 쓰지 않는다
         front, sides = (self.front, self.sides) if fresh else (None, None)
         lidar_ok = not self.use_scan or now - self.t_scan < self.cfg.lidar_timeout_sec
-        cmd = self.driver.process(frame, front, now, sides, lidar_ok)
+        yaw = self.yaw if now - self.t_odom < 0.5 else None
+        cmd = self.driver.process(frame, front, now, sides, lidar_ok, yaw)
         self.publish(cmd.v, cmd.w)
         self.set_led(self.driver.controller.led)
         self.state_pub.publish(String(data=json.dumps(self.driver.state)))

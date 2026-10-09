@@ -251,7 +251,7 @@ def test_sign_not_found_gives_up_route():
     assert c.plan_done and c.state == LANE_FOLLOW                         # 6초 안에 못 찾으면 흰 차선으로
 
 
-POCKET = dict(SIGN, use_coordinator=True, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35,
+POCKET = dict(SIGN, plan_lane2_pocket='straight_right:right', use_coordinator=True, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35,
               pocket_decide_sec=1.0)
 
 
@@ -302,7 +302,10 @@ def test_lane2_pocket_then_exit_right_left_left():
     cmd = run_flag(c, clock, see(), clock.t + 1.3, flag=True)
     assert cmd.state == WAIT_EXIT                                        # 아직 1.5초가 안 됐다
     cmd = run_flag(c, clock, see(offset=1.2), clock.t + 0.4, flag=True)
-    assert cmd.state == LANE_FOLLOW and c.exiting and cmd.w == 0 and cmd.v == 0.04   # 지나갔으면 깃발이 있어도 나간다 (곧장)
+    assert cmd.state == WAIT_EXIT                                        # 로봇이 안 보여도 1차선 깃발이 있으면 안 나간다 (YOLO 가 잠깐 놓친 것일 수 있다)
+    clock.t += 5.0                                                       # 1차선이 구간을 벗어나 깃발이 사라졌다
+    cmd = run_flag(c, clock, see(offset=1.2), clock.t + 0.2)
+    assert cmd.state == LANE_FOLLOW and c.exiting and cmd.w == 0 and cmd.v == 0.04   # 나간다 (곧장)
     assert c.plan_name == 'plan_lane2_exit'
     cmd, _ = through(c, AT_S, FAR_S, clock.t, 'right', clock, True)       # 입구의 직우 가지에서 우회전
     cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
@@ -698,3 +701,23 @@ def test_lane1_follows_right_line_past_pocket_entrance_after_s():
     assert c.plan_done and c.prefer == 'right'
     run(c, see(), t + 0.1, t + 8.5)
     assert c.cleared and c.prefer == ''
+
+
+def test_sign_turn_measures_angle_with_odometry():
+    # 2026-10-09 현장: 시간으로만 돌면 90도 대신 130도까지 돌았다 -> 오도메트리로 각도를 재서 멈춘다
+    import math
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1, yaw=0.0)
+    c.step(FAR_T, 1.0, 0.2, yaw=0.0)
+    c.step(sign('turn', far=0.85, near=1.0), 1.0, 0.3, yaw=0.0)
+    t, yaw = 0.3, 0.0
+    while c.state != SIGN_TURN:
+        t += 0.1
+        c.step(see(), 1.0, t, yaw=yaw)
+    while True:
+        t += 0.05
+        cmd = c.step(see(), 1.0, t, yaw=yaw)
+        if cmd.w == 0 and cmd.reason == 'look':
+            break
+        yaw += cmd.w * 0.05 * 1.5                                        # 실제로는 명령보다 1.5배 빨리 돈다
+    assert 80 <= abs(math.degrees(yaw)) <= 95                            # 시간으로 돌았으면 135도

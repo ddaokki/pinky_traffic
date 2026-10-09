@@ -134,6 +134,11 @@ class LaneController:
         self.t_route = 0.0                  # 통로에 들어선 시각
         self.end_hits = 0                   # 칸 끝 선이 정지 행까지 온 연속 프레임 수
         self.events = []                    # (t, 문자열) 최근 이벤트
+        self.yaw = None                     # 오도메트리 방향 (rad)
+        self.yaw_start = None
+        self.turn_deg = None
+        self.t_turn_done = None
+        self.park_yaw_t = None
         self._reset_role()
 
     def _reset_role(self):
@@ -145,6 +150,7 @@ class LaneController:
         self.t_align = None                 # 표지판 정렬(제자리 회전)을 시작한 시각
         self.aligned = False                # 직우 표지판과 나란히 맞췄다 -> 그 방향으로 곧장
         self.t_yolo = 0.0                   # 쫓던 표지판을 마지막으로 (YOLO 로) 본 시각
+        self.after_turn = False             # 돈 뒤 다음 표지판으로 다가가는 중 (먼저 정면 맞추기)
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
         self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
         self.at_sign = False                # 표지판 위에 도착했다 (기다리는 중에 표지판이 다시 보여도 다시 다가가지 않는다)
@@ -230,6 +236,7 @@ class LaneController:
         return next((s for s in ok if self._mine(s, searching)), None)
 
     def _approach(self, sign, now, why):
+        self.after_turn = self.state == SIGN_SEARCH          # 돈 뒤 다음 표지판: 먼저 제자리에서 정면으로 맞춘다
         self.target, self.t_target, self.t_align, self.aligned, self.at_sign = sign, now, None, False, False
         self.t_yolo = now
         self.pid.reset()
@@ -359,6 +366,21 @@ class LaneController:
             return Command(0.0, 0.0, SIGN_APPROACH, 'check')
         # 축이 오른쪽으로 기울었다 -> 오른쪽으로. 많이 틀어졌으면 길게, 조금이면 짧게
         return pulse(-cfg.sign_align_w if err > 0 else cfg.sign_align_w, abs(err) / 45.0, 'align')
+
+    def _turned(self, deg, elapsed):
+        """제자리 회전이 deg 만큼 됐나. 오도메트리가 있으면 각도로 (회전 감속 몫 turn_lead_deg 만큼 일찍 멈춘다),
+        없으면 시간으로. 오도메트리가 있어도 시간의 2.5배가 지나면 끝 (바퀴가 헛돌 때)."""
+        cfg = self.cfg
+        t_need = math.radians(deg) / max(0.1, cfg.park_turn_w)
+        if self.yaw is not None and self.yaw_start is not None:
+            d = abs(math.degrees(math.atan2(math.sin(self.yaw - self.yaw_start), math.cos(self.yaw - self.yaw_start))))
+            self.turn_deg = d
+            return d >= deg - cfg.turn_lead_deg or elapsed > 2.5 * t_need
+        self.turn_deg = None
+        return elapsed >= t_need
+
+    def _turn_text(self):
+        return f'{self.turn_deg:.0f}deg (odom)' if self.turn_deg is not None else 'by time'
 
     def _maneuver_done(self, now):
         """표지판 하나를 마쳤다 -> 다음 표지판 찾기 / 칸으로 / 경로 끝."""
@@ -507,9 +529,11 @@ class LaneController:
         self.last_w = w
         return v, w
 
-    def step(self, p: Perception, front_m=None, now=0.0, sides=None, lidar_ok=True) -> Command:
-        """sides = (왼쪽 거리, 오른쪽 거리) 라이다 측면 최소값 (없으면 None). lidar_ok=False 면 움직이지 않는다."""
+    def step(self, p: Perception, front_m=None, now=0.0, sides=None, lidar_ok=True, yaw=None) -> Command:
+        """sides = (왼쪽 거리, 오른쪽 거리) 라이다 측면 최소값 (없으면 None). lidar_ok=False 면 움직이지 않는다.
+        yaw = 오도메트리 방향(rad, 없으면 None): 제자리 회전 각도를 잰다."""
         cfg = self.cfg
+        self.yaw = yaw
         if not lidar_ok and cfg.require_lidar and self.state not in (IDLE, ESTOP, PARKED):
             # 라이다가 끊기면 앞의 장애물·옆 로봇을 못 본다 -> 바퀴를 세운다 (상태와 타이머는 그대로 둔다)
             self.t_last = now
@@ -588,8 +612,11 @@ class LaneController:
                 return Command(cfg.v_min, 0.0, POCKET_END)
             self._go(PARK_TURN, now, f'on green +{self.advance:.2f}m')
         if self.state == PARK_TURN:
-            # 각도 센서 없이 시간으로 돈다: 각도 / 회전 속도
-            if now - self.t_state >= math.radians(cfg.park_turn_deg) / max(0.1, cfg.park_turn_w):
+            # 오도메트리로 각도를 재며 돈다 (없으면 시간: 각도 / 회전 속도)
+            if self.park_yaw_t != self.t_state:
+                self.park_yaw_t, self.yaw_start = self.t_state, self.yaw
+            if self._turned(cfg.park_turn_deg, now - self.t_state):
+                self.events.append((now, f'park turned {self._turn_text()}'))
                 if cfg.lane_role == 2:
                     self.pocket_mode, self.pocket_parked = False, True
                     self._junction(False)             # 칸 안에 들어왔다 -> 1차선 로봇이 유턴해도 된다
@@ -604,7 +631,10 @@ class LaneController:
             if p.obstacle_y > 0 or (front_m is not None and front_m < cfg.pass_front_m):
                 self.saw_robot, self.t_robot = True, now
             passed = self.saw_robot and now - self.t_robot >= cfg.pass_clear_sec
-            if now - self.t_state < cfg.exit_wait_sec or not (passed or not self._oncoming()):
+            # 나가는 건 1차선 깃발이 내려갔을 때 (= 1차선이 구간을 다 벗어났다). 로봇이 잠깐 안 보인 것만으로는 안 나간다
+            # (2026-10-09: YOLO 가 1.5초 놓치자 '지나갔다'로 보고 1차선이 아직 앞에 있는데 출발). 너무 오래면 lane2_exit_max_sec 뒤 나간다
+            go = not self._oncoming() or now - self.t_state > cfg.lane2_exit_max_sec
+            if now - self.t_state < cfg.exit_wait_sec or not go:
                 return Command(0.0, 0.0, WAIT_EXIT, 'robot seen' if self.saw_robot else 'wait oncoming')
             self.exiting, self.t_mode, self.t_seen = True, now, now
             self._set_plan('plan_lane2_exit', now)
@@ -622,6 +652,18 @@ class LaneController:
             sign = self._wanted_sign(p, tracking=True)
             if sign is not None:
                 self.target, self.t_target, self.t_yolo = sign, now, now
+            if self.after_turn and sign is not None and not self.exiting and not self._align_kind():
+                # 돈 뒤 다음 표지판이 옆에 보이면 조금 돌고 멈춰 다시 보는 식으로 정면에 놓은 뒤 다가간다 (현장 요청)
+                if now < self.pulse_until:
+                    return Command(0.0, self.pulse_w, SIGN_APPROACH, 'face step')
+                if now < self.settle_until:
+                    return Command(0.0, 0.0, SIGN_APPROACH, 'settle')
+                if abs(sign[1]) > cfg.sign_face_x:
+                    self.pulse_w = -cfg.sign_align_w if sign[1] > 0 else cfg.sign_align_w
+                    self.pulse_until = now + cfg.sign_step_min_sec + (cfg.sign_step_max_sec - cfg.sign_step_min_sec) * min(1.0, abs(sign[1]))
+                    self.settle_until = self.pulse_until + cfg.sign_settle_sec
+                    return Command(0.0, self.pulse_w, SIGN_APPROACH, 'face sign')
+                self.after_turn = False
             if self._align_kind() and not self.aligned:
                 cmd = self._square_up(sign, p, now, dt)
                 if cmd is not None:
@@ -679,12 +721,17 @@ class LaneController:
             else:
                 self._maneuver_done(now)
         if self.state == SIGN_TURN:
+            # 멈춤(sign_pause_sec) -> 제자리 90도 (오도메트리로 각도를 잰다, 없으면 시간) -> 멈춤(sign_after_turn_sec)
+            # (2026-10-09 현장: 시간으로만 돌면 90도 대신 130도까지 돌았다)
             if now - self.t_state < cfg.sign_pause_sec:
+                self.yaw_start, self.t_turn_done = self.yaw, None
                 return Command(0.0, 0.0, SIGN_TURN, 'pause')     # 표지판 위에서 완전히 멈춘 뒤 돈다
-            turn_end = cfg.sign_pause_sec + math.radians(cfg.sign_turn_deg) / max(0.1, cfg.park_turn_w)
-            if now - self.t_state < turn_end:
-                return Command(0.0, -cfg.park_turn_w if self.action == 'right' else cfg.park_turn_w, SIGN_TURN)
-            if now - self.t_state < turn_end + cfg.sign_after_turn_sec:
+            if self.t_turn_done is None:
+                if not self._turned(cfg.sign_turn_deg, now - self.t_state - cfg.sign_pause_sec):
+                    return Command(0.0, -cfg.park_turn_w if self.action == 'right' else cfg.park_turn_w, SIGN_TURN)
+                self.t_turn_done = now
+                self.events.append((now, f'turned {self._turn_text()}'))
+            if now - self.t_turn_done < cfg.sign_after_turn_sec:
                 # 돈 뒤에도 멈춰서 다음 표지판을 본다 (2026-10-09: 돌자마자 곧장 가서 다음 표지판이 화면 옆으로 빠졌다)
                 return Command(0.0, 0.0, SIGN_TURN, 'look')
             self._maneuver_done(now)
