@@ -181,6 +181,7 @@ class Config:
     lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다
     sign_arrive_far_row: float = 0.75   # 표지판의 먼 끝이 이 행 아래로 오면 도착 (카메라 사각지대까지 밀고 가지 않는다)
     sign_wall_sec: float = 1.0       # 표지판 위에서 앞이 이만큼 막혀 있으면 표지판 끝으로 보고 돈다
+    lane2_exit_m: float = 0.25       # 2차선: 마지막 좌회전 뒤 이만큼 곧장 가고 그다음 흰 차선
     lane1_exit_m: float = 0.20       # 1차선: 두 번째 표지판(R2)을 돈 뒤 이만큼 곧장 가고(S 를 지나) 그다음 흰 차선 (현장 요청)
     wall_turn_m: float = 0.20        # 차선 따라가다 정면 벽이 이보다 가까우면 앞 대각선이 더 트인 쪽으로 꺾는다
     wall_avoid_m: float = 0.15       # 앞 대각선(wall_avoid_from~to 도)에 벽이 이보다 가까우면 반대쪽으로 꺾는다 (0 = 끔)
@@ -300,6 +301,7 @@ TUNABLE = [
     ('sign_advance_m', 0.0, 0.40, 0.01),
     ('sign_turn_deg', 30.0, 150.0, 5.0),
     ('lane1_exit_m', 0.0, 1.0, 0.05),
+    ('lane2_exit_m', 0.0, 1.0, 0.05),
     ('sign_arrive_far_row', 0.50, 1.00, 0.05),
     ('sign_align_deg', 0.0, 40.0, 1.0),
     ('zone_advance_m', 0.0, 0.30, 0.01),

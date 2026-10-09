@@ -457,13 +457,15 @@ class LaneController:
                 self._flag(True)
         if self.junction_held and not self.cleared:
             self._junction(True)                      # 하트비트
-        if self.plan_done and cfg.lane_role == 1 and self.plan_name == 'plan_lane1' and self.exit_run < cfg.lane1_exit_m:
-            # R2 를 돈 뒤 정해진 거리만큼 곧장 (S 표지판·칸 입구 선에 흔들리지 않게). 그다음 오른쪽 선만 따라가며 구간을 벗어난다
+        exit_m = cfg.lane1_exit_m if self.plan_name == 'plan_lane1' else cfg.lane2_exit_m
+        if self.plan_done and self.plan_name in ('plan_lane1', 'plan_lane2', 'plan_lane2_exit') and self.exit_run < exit_m:
+            # 경로의 마지막 표지판을 지난 뒤 정해진 거리만큼 곧장 (표지판·칸 입구 선에 흔들리지 않게, 마지막 회전 직후엔 차선이 안 보인다).
+            # 그다음 오른쪽 선만 따라가며 구간을 벗어난다 (2026-10-10 pinky2: 마지막 좌회전 뒤 차선이 안 보여 그 자리에서 lost)
             if self.exit_run == 0.0:
-                self.events.append((now, f'straight {cfg.lane1_exit_m:.2f}m after R2'))
+                self.events.append((now, f'straight {exit_m:.2f}m after last sign'))
             self.exit_run += cfg.v_min * dt
             self.t_seen = now
-            if self.exit_run >= cfg.lane1_exit_m:
+            if self.exit_run >= exit_m:
                 self.t_mode = now
                 self.events.append((now, 'straight done -> lanes'))
             return Command(cfg.v_min, 0.0, self.state, 'straight out')

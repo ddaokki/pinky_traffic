@@ -250,8 +250,9 @@ class HsvDetector:
             # 갈림길: 한쪽 선만 보고 (기억해 둔 차선 폭의 절반만큼 떨어져) 따라간다
             keep = masks[self.prefer]
             masks = {'left': keep if self.prefer == 'left' else None,
-                     'right': keep if self.prefer == 'right' else None, 'crosswalk': None}
-            p = lane_from_masks(masks['left'], masks['right'], None, self.cfg, self.memory, False)
+                     'right': keep if self.prefer == 'right' else None, 'crosswalk': masks.get('crosswalk')}
+            # 한쪽 선만 따라가는 중에도 횡단보도는 본다 (2026-10-10 pinky1: 유턴 뒤 오른쪽 선만 보는 8초 동안 횡단보도를 그냥 지나감)
+            p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
         else:
             p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
         p.signs = list(self.signs)

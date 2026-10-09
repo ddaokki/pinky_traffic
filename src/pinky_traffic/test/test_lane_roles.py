@@ -156,7 +156,7 @@ def sign(kind, x=0.0, far=0.5, near=0.7):
 
 FAR_T, AT_T = sign('turn'), see()            # AT_* = 표지판 위에 올라타 화면에서 사라졌다
 FAR_S, AT_S = sign('straight_right'), see()
-SIGN = dict(sign_align_deg=0.0, sign_arrive_far_row=1.01, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
+SIGN = dict(sign_align_deg=0.0, lane2_exit_m=0.0, sign_arrive_far_row=1.01, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
             sign_search_sec=6.0, junction_clear_sec=8.0)
 
 
@@ -934,3 +934,24 @@ def test_lane1_last_straight_sign_missing_goes_straight_out():
     cmd, t = through(c, AT_T, FAR_T, t, 'right')
     cmd, t = run(c, see(), t, t + 4.5)
     assert c.plan_done and c.state == LANE_FOLLOW and cmd.reason == 'straight out'
+
+
+def test_lane2_goes_straight_after_last_left_even_without_lanes():
+    # 2026-10-10 pinky2: 마지막 좌회전 뒤 차선이 안 보여 그 자리에서 lost
+    c = started(lane_role=2, **dict(SIGN, lane2_exit_m=0.2))
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_S, FAR_S, 0.1, 'straight')
+    cmd, t = through(c, AT_T, FAR_T, t + 0.1, 'left')
+    cmd, t = through(c, AT_T, FAR_T, t, 'left')
+    cmd, t = run(c, Perception(), t, t + 3.0)                            # 차선이 하나도 안 보인다
+    assert c.plan_done and cmd.v > 0 and cmd.w == 0 and cmd.reason == 'straight out'
+
+
+def test_crosswalk_seen_while_following_one_side():
+    img = floor()
+    for x in (90, 150, 210):
+        cv2.rectangle(img, (x, 150), (x + 30, 215), WHITE, -1)
+    assert HsvDetector(Config()).detect(img)[0].crosswalk
+    det = HsvDetector(Config())
+    det.prefer = 'right'
+    assert det.detect(img)[0].crosswalk                                  # 한쪽 선만 따라가는 중에도 횡단보도는 본다
