@@ -18,10 +18,28 @@ def shaft_angle(ys, xs, h, w, horizon_row):
     바닥에서 로봇과 나란한 선은 화면에서 소실점(가운데, horizon_row)을 향한다. 그 방향과 축의 차이."""
     if len(xs) < 20:
         return None
-    vx, vy, x0, y0 = cv2.fitLine(np.column_stack([xs, ys]).astype(np.float32), cv2.DIST_HUBER, 0, 0.01, 0.01).ravel()
-    if vy > 0:
-        vx, vy = -vx, -vy
-    seen = math.degrees(math.atan2(vx, -vy))
+    # 화살표 머리·오른쪽 가지까지 PCA로 맞추면 가로 가지를 진행 방향으로 본다.
+    # 아래쪽 몸통의 행별 중심을 맞춘다. 옆으로 잘렸거나 짧은 조각은 방향 근거가 없다.
+    rows = []
+    for y in range(int(ys.min() + 0.35 * (ys.max() - ys.min())), int(ys.max()) + 1):
+        cols = xs[ys == y]
+        if len(cols) >= 5 and cols.min() > 1 and cols.max() < w - 2:
+            rows.append((y, float(np.median(cols))))
+    if len(rows) < max(20, int(0.20 * h)):
+        return None
+    rows = np.asarray(rows)
+    keep = np.ones(len(rows), bool)
+    for _ in range(4):
+        if keep.sum() < 20:
+            return None
+        slope, intercept = np.polyfit(rows[keep, 0], rows[keep, 1], 1)
+        residual = abs(rows[:, 1] - (slope * rows[:, 0] + intercept))
+        keep = residual <= max(2.5, float(np.median(residual)) * 2.5)
+    if keep.sum() < 0.20 * h or np.ptp(rows[keep, 0]) < 0.20 * h:
+        return None
+    y0 = float(rows[keep, 0].mean())
+    x0 = slope * y0 + intercept
+    seen = math.degrees(math.atan2(-slope, 1.0))
     ideal = math.degrees(math.atan2(w / 2.0 - x0, max(1.0, y0 - horizon_row * h)))
     err = seen - ideal
     return float((err + 90.0) % 180.0 - 90.0)       # 선은 방향이 없다: -90..90
@@ -87,15 +105,21 @@ class HsvDetector:
         (2026-10-09: 이 조명에서는 흰 차선도 살짝 푸르게 떠 glare 범위에 들어갔다 -> 흰 선을 표지판으로 보고 차선을 벗어남.
          진짜 표지판은 햇빛을 받아도 진한 파랑이 조금은 남는다)"""
         cfg = self.cfg
-        strong = self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
-        glare = self.color_mask(frame, cfg.blue_glare_lo, cfg.blue_glare_hi)
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        strong = cv2.inRange(hsv, np.array(cfg.blue_hsv_lo, np.uint8), np.array(cfg.blue_hsv_hi, np.uint8))
+        glare = cv2.inRange(hsv, np.array(cfg.blue_glare_lo, np.uint8), np.array(cfg.blue_glare_hi, np.uint8))
+        strong = cv2.morphologyEx(strong, cv2.MORPH_OPEN, self.kernel)
+        glare = cv2.morphologyEx(glare, cv2.MORPH_OPEN, self.kernel)
         both = strong | glare
-        if not glare.any() or not strong.any():
-            return strong
         n, labels = cv2.connectedComponents(both, connectivity=8)
         seeded = np.unique(labels[(strong > 0)])
-        seeded = seeded[seeded > 0]
-        return np.where(np.isin(labels, seeded), 255, 0).astype(np.uint8)
+        # 화면 맨 위까지 이어진 푸르스름한 벽은 바닥 표지판이 아니다. ROI로 자르기 전에 뺀다.
+        seeded = np.setdiff1d(seeded[seeded > 0], np.unique(labels[0]))
+        seeded = [i for i in seeded if np.count_nonzero(strong[labels == i]) >=
+                  max(8, 0.015 * np.count_nonzero(labels == i))]
+        mask = np.where(np.isin(labels, seeded), 255, 0).astype(np.uint8)
+        mask[:int(cfg.roi_top * frame.shape[0])] = 0
+        return mask
 
     def local_bright_mask(self, frame):
         """주변보다 밝은 가는 띠 (그늘 속 흰 테이프). 원본 - 오프닝(가는 밝은 것을 지운 배경) 이 크면 띠."""
@@ -317,9 +341,27 @@ class HybridDetector(HsvDetector):
         if cfg.lane_role and self.has_signs:
             # YOLO 가 못 잡으면 색으로 찾은 파란 표지판을 쓴다 (2026-10-09 pinky2: 직우 막대 위에 올라서니 YOLO 가 거의 못 잡아
             # 표지판을 앞에 두고 15초 멈춤). 색은 진한 파랑에 붙은 부분만 파랑으로 본다 (blue_mask) -> 흰 선 오인 없음
-            hsv_signs = self.signs
-            self.signs = list(signs) if signs else hsv_signs
-            self.objects = list(objects) if signs else self.objects + [o for o in objects if o[0] == 'robot']
+            # YOLO가 다른 표지판 하나만 잡아도 현재 표지판의 HSV 결과를 통째로
+            # 버리던 문제: 제어 위치는 항상 현재 프레임의 전체 색 영역을 사용한다.
+            # YOLO는 겹치는 영역의 종류만 보완한다 (낡은 박스로 위치를 고정하지 않음).
+            if cfg.sign_use_kind:
+                blue = self.blue_mask(frame)
+                _, labels = cv2.connectedComponents(blue, connectivity=8)
+                fused = []
+                for s in self.signs:
+                    choices = []
+                    for obj in objects:
+                        if obj[0] not in SIGNS:
+                            continue
+                        ids, counts = np.unique(labels[obj[2] > 0], return_counts=True)
+                        ids = ids[(counts >= cfg.sign_min_area * w * h) & (ids > 0)]
+                        for label in ids:
+                            ys, xs = np.where(labels == label)
+                            if abs(float((xs.mean() - w / 2) / (w / 2)) - s[1]) < 0.01:
+                                choices.append((obj[1] or 0.0, obj[0]))
+                    fused.append((max(choices)[1] if choices else s[0], *s[1:]))
+                self.signs = fused
+            self.objects = list(objects) + [o for o in self.objects if o[0] == 'sign']
         else:
             self.objects = self.objects + [o for o in objects if o[0] == 'robot']
         p, masks = self.perceive(frame, masks, found)

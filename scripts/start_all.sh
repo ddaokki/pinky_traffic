@@ -9,8 +9,8 @@ WS="$(cd "$(dirname "$0")/.." && pwd)"
 
 # 이름  IP(학원 와이파이 FASTCAMPUS_10F)  기본 도메인  차선  영상 뒤집기
 ROBOTS=(
-  "pinky1 192.168.129.199 24 0 true"
-  "pinky2 192.168.129.200 23 0 true"
+  "pinky1 192.168.129.199 24 1 true"
+  "pinky2 192.168.129.200 23 2 true"
 )
 SSH_OPTS=(-o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
 

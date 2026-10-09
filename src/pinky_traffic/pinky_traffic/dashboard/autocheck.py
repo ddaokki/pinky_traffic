@@ -94,7 +94,7 @@ class AutoCheck:
             r['lane1_done'] = r['exit_done'] = False
         else:
             r['moving_since'] = r['moving_since'] or now
-            if st == 'lost' and not r['lost']:
+            if st in ('lost', 'sign_hold') and not r['lost']:
                 r['lost'] = True
                 out.append(('C-03', 'fail', f'{name}: lost ({state.get("reason") or ""})'.strip()))
             if not r['lost'] and now - r['moving_since'] >= 30:

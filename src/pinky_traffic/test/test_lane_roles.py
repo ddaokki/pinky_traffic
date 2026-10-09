@@ -2,6 +2,7 @@
 1차선이 오면(깃발) 2차선은 직우 표지판에서 우회전해 초록 칸으로 비켰다가, 나와서 우회전 -> 좌 -> 좌 로 1차선에 간다."""
 import cv2
 import numpy as np
+from pathlib import Path
 
 from pinky_traffic.core.config import Config
 from pinky_traffic.core.controller import (LaneController, LANE_FOLLOW, PARK_TURN, WAIT_EXIT, WAIT_JUNCTION,
@@ -182,17 +183,21 @@ def through(c, near_p, far_p, t, action, clock=None, flag=None):
     """표지판 하나: 보임 -> 다가감 -> 발밑으로 사라짐 -> 더 감 -> (회전). 끝난 시각을 돌려준다."""
     step = (lambda p, t1, front=1.0: run_flag(c, clock, p, t1, front, flag)) if clock else \
         (lambda p, t1, front=1.0: run(c, p, t, t1, front=front)[0])
-    cmd = step(far_p, t + 0.1)
+    cmd = step(far_p if c.state != SIGN_APPROACH else see(signs=[c.target]), t + 0.1)
     assert cmd.state == SIGN_APPROACH and cmd.v == 0.04
     kind = far_p.signs[0][0]
     cmd = step(sign(kind, far=0.85, near=1.0), t + 0.2)                  # 발밑까지 왔다
     assert cmd.state == SIGN_APPROACH
-    cmd = step(near_p, t + 0.4)                                           # 사라진 직후: 아직 곧장 간다
-    assert cmd.state == SIGN_APPROACH and cmd.w == 0 and cmd.v > 0
+    cmd = step(near_p, t + 0.4)                                           # 사라진 직후: 멈춰서 확인
+    assert cmd.state == SIGN_APPROACH and cmd.w == 0 and cmd.v == 0
     cmd = step(near_p, t + 0.6)
-    assert cmd.state == SIGN_ADVANCE and cmd.w == 0                       # 0.3초 동안 안 보임 = 표지판 위
-    cmd = step(near_p, t + 3.6)                                           # 0.12m / 0.04 = 3초
-    t = t + 3.6
+    assert cmd.state in (SIGN_ADVANCE, SIGN_TURN) and cmd.w == 0          # 0.3초 안 보임. 추가 거리 0이면 바로 회전 준비
+    if cmd.state != SIGN_TURN:
+        t_end = t + 0.7 + c.advance_m / c.cfg.v_min                       # 설정된 추가 거리만큼 전진
+        cmd = step(near_p, t_end)
+        t = t_end
+    else:
+        t = t + 0.6
     if action == 'straight':
         return cmd, t
     assert cmd.state == SIGN_TURN and cmd.v == 0                          # 제자리 (멈춤 -> 회전)
@@ -238,17 +243,17 @@ def test_lane2_without_oncoming_goes_straight_then_left_left():
     t += 0.1
     cmd, t = through(c, AT_T, FAR_T, t + 0.1, 'left')
     cmd, t = through(c, AT_T, FAR_T, t, 'left')
-    assert c.plan_done and cmd.state == LANE_FOLLOW
+    assert c.plan_done and cmd.state == LANE_FOLLOW and c.prefer == 'right'
 
 
-def test_sign_not_found_gives_up_route():
+def test_sign_not_found_stops_with_route_preserved():
     c = started(lane_role=1, **SIGN)
     c.step(see(), 1.0, 0.1)
     cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
     cmd, t = run(c, see(), t, t + 5.0)
     assert cmd.state == SIGN_SEARCH and cmd.v > 0
     cmd, t = run(c, see(), t, t + 1.5)
-    assert c.plan_done and c.state == LANE_FOLLOW                         # 6초 안에 못 찾으면 흰 차선으로
+    assert not c.plan_done and c.state == 'sign_hold' and cmd.v == 0
 
 
 POCKET = dict(SIGN, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, plan_lane2_pocket='straight_right:right', use_coordinator=True, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35,
@@ -310,7 +315,7 @@ def test_lane2_pocket_then_exit_right_left_left():
     cmd, _ = through(c, AT_S, FAR_S, clock.t, 'right', clock, True)       # 입구의 직우 가지에서 우회전
     cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
     cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
-    assert c.plan_done and cmd.state == LANE_FOLLOW
+    assert c.plan_done and cmd.state == LANE_FOLLOW and c.prefer == 'right'
 
 
 def test_lane2_exits_when_flag_goes_down():
@@ -414,9 +419,9 @@ def test_sign_lost_far_away_is_not_arrival():
     c.step(see(), 1.0, 0.1)
     c.step(FAR_T, 1.0, 0.2)                                               # 멀리서 보였다가
     cmd, t = run(c, see(), 0.2, 1.0)
-    assert cmd.state == SIGN_APPROACH and cmd.v > 0                       # 잠깐 놓친 동안은 계속 다가간다
+    assert cmd.state == SIGN_APPROACH and cmd.v == 0                       # 놓친 동안 위치를 확인하려고 선다
     cmd, t = run(c, see(), t, 2.0)
-    assert c.state == LANE_FOLLOW and c.plan_i == 0                       # 1.5초 넘게 못 보면 도착이 아니라 놓친 것
+    assert c.state == 'sign_hold' and c.plan_i == 0                       # 1.5초 넘게 못 보면 경로 보존·정지
 
 
 def test_bluish_white_line_alone_is_not_a_sign():
@@ -556,17 +561,16 @@ def test_shaft_angle_from_blue_mask():
     assert blue_angles(m, cfg)[0][1] > 20
 
 
-def test_lane1_giving_up_keeps_flag_until_clear():
-    # 2026-10-09: 1차선이 R2 를 못 찾고 포기하자마자 깃발을 내려 칸의 2차선이 나와 버렸다
+def test_lane1_missing_sign_holds_flag_and_stops():
     clock = Clock()
     a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **POCKET)
     run_flag(a, clock, see(), 0.1)
     run_flag(a, clock, FAR_T, 0.2)
     through(a, AT_T, FAR_T, clock.t, 'right', clock)
     run_flag(a, clock, see(), clock.t + 6.5)
-    assert a.plan_done and a.state == LANE_FOLLOW and clock.mgr.flags_of_others('b') == ['oncoming']
+    assert not a.plan_done and a.state == 'sign_hold' and clock.mgr.flags_of_others('b') == ['oncoming']
     run_flag(a, clock, see(), clock.t + 8.2)
-    assert a.cleared and clock.mgr.flags_of_others('b') == []
+    assert not a.cleared and clock.mgr.flags_of_others('b') == ['oncoming']
 
 
 def test_lane_width_not_learned_on_crosswalk_and_near_not_narrower_than_far():
@@ -664,18 +668,18 @@ def test_square_up_reacquires_sign_that_jumped_to_other_side():
     cmd = c.step(see(signs=[('blue', -0.5, 0.43, 1.0)], sign_angles=[(-0.5, -15.0)]), 1.0, 0.4)
     assert cmd.w > 0                                                     # 왼쪽으로 넘어간 표지판을 다시 잡아 왼쪽으로
     cmd, _ = run(c, see(), 0.4, 4.0)
-    assert c.state == LANE_FOLLOW and c.plan_i == 0                      # 끝내 못 찾으면 도착으로 치지 않고 다시 찾는다
+    assert c.state == 'sign_hold' and c.plan_i == 0                      # 끝내 못 찾으면 경로를 보존하고 정지
 
 
 def test_not_arrived_while_blue_still_ahead():
-    # 2026-10-09 pinky2: 직우 긴 막대 위에서 YOLO 가 0.3초 놓치자 '도착'으로 보고 오른쪽 화살표 한참 앞에서 우회전
+    # 현재 표지판을 잃었을 때 방향 마스크 한 조각만 보고 맹목적으로 더 가지 않는다.
     c = started(lane_role=2, **SIGN)
     c.step(see(), 1.0, 0.1)
     c.step(FAR_S, 1.0, 0.2)
     c.step(sign('straight_right', far=0.4, near=1.0), 1.0, 0.3)
-    shaft = see(sign_angles=[(0.1, 0.0, 0.4, 1.0)])                       # YOLO 는 놓쳤지만 색으로는 파랑이 발밑에 있다
+    shaft = see(sign_angles=[(0.1, 0.0, 0.4, 1.0)])
     cmd, t = run(c, shaft, 0.3, 1.5)
-    assert c.state == SIGN_APPROACH and cmd.v > 0 and cmd.reason == 'blue ahead'
+    assert c.state == SIGN_APPROACH and cmd.v == 0
     run(c, see(), 1.5, 2.0)
     assert c.state != SIGN_APPROACH                                       # 파랑이 다 지나가면 도착
     # 우회전 표지판에서는 이 규칙을 안 쓴다 (2026-10-09: 앞쪽 다른 표지판 파랑 때문에 벽 앞까지 감)
@@ -731,10 +735,10 @@ def test_sign_turn_measures_angle_with_odometry():
 
 def test_wall_ahead_on_sign_counts_as_sign_end():
     # 2026-10-09 pinky2: 직우 막대 위에서 앞 가벽이 10cm 안이라 안전 정지에 걸린 채 24초 멈춤
-    c = started(lane_role=1, **SIGN)
+    c = started(lane_role=2, **dict(SIGN, plan_lane2='straight_right:straight'))
     c.step(see(), 1.0, 0.1)
-    c.step(FAR_T, 1.0, 0.2)
-    on = sign('turn', far=0.5, near=1.0)
+    c.step(FAR_S, 1.0, 0.2)
+    on = sign('straight_right', far=0.5, near=1.0)
     cmd, t = run(c, on, 0.2, 1.5, front=0.09)
     assert c.state in (SIGN_ADVANCE, SIGN_TURN)                           # 막힌 채 1초 -> 표지판 끝
 
@@ -801,12 +805,70 @@ def test_nearest_sign_wins_over_centered_far_one():
     assert c._wanted_sign(p)[1] == -0.1                                  # 둘 다 발밑이면 가운데 쪽
 
 
-def test_turn_sign_arrives_when_far_edge_reaches_bottom():
-    # 2026-10-09 현장: 표지판이 다 사라질 때까지 가면 카메라 사각(앞 10cm) 때문에 한참 지나서 돈다
+def test_next_sign_search_ignores_blue_mark_already_under_robot():
+    # 23:01 실주행: R1 회전 직후 발밑의 직우 표지를 R2로 잡고 접근 없이 바로 또 회전했다.
+    c = started(lane_role=1, **dict(SIGN, sign_arrive_far_row=0.75))
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    p = see(signs=[('blue', 0.05, 0.76, 1.0), ('blue', 0.30, 0.50, 0.72)])
+    target = c._wanted_sign(p)
+    assert target is not None and target[2] == 0.50
+
+
+def test_next_sign_too_close_backs_up_before_choosing_far_sign():
+    # 1차선 첫 회전 직후 R2가 카메라 바로 밑에 있어 모양이 잘리면, 먼 직우를 고르기 전에 시야를 확보한다.
+    c = started(lane_role=1, **dict(SIGN, sign_arrive_far_row=0.75, sign_backoff_m=0.04))
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    p = see(signs=[('turn', 0.05, 0.76, 1.0), ('straight_right', 0.10, 0.45, 0.70)])
+    cmd = c.step(p, 1.0, 0.1)
+    assert cmd.state == SIGN_SEARCH and cmd.v < 0 and c.target is None
+    cmd, _ = run(c, p, 0.1, 1.2)
+    assert c.backoff_done and c.backoff_run >= 0.04
+
+
+def test_turn_sign_waits_until_blue_disappears():
+    # 짧은 좌·우회전 표지는 거리선에서 돌면 아직 코앞에 파랑이 남는다.
     c = started(lane_role=1, **dict(SIGN, sign_arrive_far_row=0.75))
     c.step(see(), 1.0, 0.1)
     c.step(FAR_T, 1.0, 0.2)
     c.step(sign('turn', far=0.6, near=1.0), 1.0, 0.3)
     assert c.state == SIGN_APPROACH
     c.step(sign('turn', far=0.78, near=1.0), 1.0, 0.4)
-    assert c.state == SIGN_ADVANCE                                        # 먼 끝이 0.75 아래 -> 여기서 도착
+    assert c.state == SIGN_APPROACH                                      # 파랑이 보이는 동안 계속 전진
+    run(c, see(), 0.4, 0.8)
+    assert c.state == SIGN_ADVANCE                                       # 완전히 사라진 뒤 도착
+
+
+def test_straight_right_sign_still_uses_far_edge_distance():
+    c = started(lane_role=2, **dict(SIGN, sign_arrive_far_row=0.75,
+                                    plan_lane2='straight_right:straight'))
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_S, 1.0, 0.2)
+    c.step(sign('straight_right', far=0.78, near=1.0), 1.0, 0.3)
+    assert c.state in (WAIT_JUNCTION, SIGN_ADVANCE)
+
+
+def test_lane2_recorded_signs_and_blue_wall():
+    # 22:37 실주행: YOLO가 멀리 있는 표지판만 잡아도 직우 전체와 바로 앞
+    # 좌회전 표지판이 색 마스크에서 살아 있어야 한다.
+    root = Path(__file__).parent / 'fixtures'
+    d = HsvDetector(Config(lane_role=2))
+    first, _, _ = d.detect(cv2.imread(str(root / 'lane2_first_sign.jpg')))
+    assert first.signs and abs(first.signs[0][1]) < 0.4
+    two, _, _ = d.detect(cv2.imread(str(root / 'lane2_two_signs.jpg')))
+    assert any(s[3] > 0.9 and abs(s[1]) < 0.5 for s in two.signs)
+    assert any(0.4 < s[3] < 0.6 and abs(s[1]) < 0.5 for s in two.signs)
+    wall, _, _ = d.detect(cv2.imread(str(root / 'lane2_blue_wall.jpg')))
+    assert not wall.signs
+
+
+def test_tracking_does_not_jump_from_near_sign_to_distant_one():
+    c = started(lane_role=2, **SIGN)
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'left')], [None], 0, 'plan_lane2'
+    c._go(SIGN_SEARCH, 0.0)
+    c.step(see(signs=[('blue', 0.30, 0.58, 1.0)]), 1.0, 0.1)
+    assert c.target[3] == 1.0
+    p = see(signs=[('blue', 0.28, 0.40, 0.53)])
+    assert c._wanted_sign(p, tracking=True) is None
+    assert c.step(p, 1.0, 0.2).v == 0

@@ -25,13 +25,14 @@ SIGN_APPROACH = 'sign_approach'    # 파란 표지판 쪽으로 간다
 SIGN_ADVANCE = 'sign_advance'      # 표지판 끝에 도착 -> 곧장 조금 더 가서 표지판 위에 선다
 SIGN_TURN = 'sign_turn'            # 표지판 위에서 제자리 90도 (경로에 적힌 쪽으로)
 SIGN_SEARCH = 'sign_search'        # 다음 표지판을 찾으며 곧장 간다
+SIGN_HOLD = 'sign_hold'            # 표지판/경로를 잃음: 순번을 보존하고 STOP/START까지 정지
 POCKET_END = 'pocket_end'          # 초록 선이 보인 뒤 곧장 더 가서 초록 선 위에 선다
 WAIT_EXIT = 'wait_exit'            # 초록 칸에서 돌아선 뒤, 상대 로봇이 지나갈 때까지 기다린다
 
 # LED (r, g, b): 달리는 중 초록, 서 있으면 빨강, 주차 통로 안에서는 통로 색, 주차 완료 초록
 LED_GREEN, LED_RED, LED_BLUE = (0, 255, 0), (255, 0, 0), (0, 0, 255)
-STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP, WAIT_JUNCTION, WAIT_EXIT)
-MANEUVERS = (SIGN_APPROACH, SIGN_ADVANCE, SIGN_TURN, SIGN_SEARCH, POCKET_END, PARK_TURN)
+STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP, WAIT_JUNCTION, WAIT_EXIT, SIGN_HOLD)
+MANEUVERS = (SIGN_APPROACH, SIGN_ADVANCE, SIGN_TURN, SIGN_SEARCH, SIGN_HOLD, POCKET_END, PARK_TURN)
 
 
 def parse_plan(text, with_advance=False):
@@ -152,6 +153,8 @@ class LaneController:
         self.t_yolo = 0.0                   # 쫓던 표지판을 마지막으로 (YOLO 로) 본 시각
         self.after_turn = False             # 돈 뒤 다음 표지판으로 다가가는 중 (먼저 정면 맞추기)
         self.t_walled = None                # 표지판 위에서 앞이 막힌 시각
+        self.backoff_run = 0.0              # 회전 직후 너무 가까운 다음 표지판을 다시 보기 위해 후진한 거리
+        self.backoff_done = False
         self.exit_run = 0.0                 # 1차선: R2 뒤 곧장 간 거리
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
         self.align_off = False              # 정면 맞추기를 건너뛰었다 (그래도 표지판 쪽으로는 간다)
@@ -233,9 +236,16 @@ class LaneController:
         kind = self.plan[self.plan_i][0]
         ok = [s for s in p.signs if kind in ('any', s[0]) or s[0] == 'blue']   # 'blue' = 종류를 모른다
         if tracking and self.target is not None:
-            near = [s for s in ok if abs(s[1] - self.target[1]) <= 0.5]
-            return min(near, key=lambda s: abs(s[1] - self.target[1])) if near else None
+            near = [s for s in ok if abs(s[1] - self.target[1]) <= 0.5
+                    and s[3] >= self.target[3] - self.cfg.sign_track_back_row
+                    and s[2] >= self.target[2] - self.cfg.sign_track_back_row]
+            return min(near, key=lambda s: abs(s[1] - self.target[1]) + abs(s[2] - self.target[2])
+                       + abs(s[3] - self.target[3])) if near else None
         searching = self.state == SIGN_SEARCH or self.exiting
+        if searching and not self.exiting:
+            # 직전 회전 뒤 이미 발밑까지 지난 옆 표지판을 다음 순번으로 잡으면
+            # 접근 없이 즉시 또 회전한다. 다음 표지판은 아직 도착선보다 앞에 있어야 한다.
+            ok = [s for s in ok if s[2] < self.cfg.sign_arrive_far_row]
         # 여러 개면 가장 가까운 것(화면 아래), 비슷하게 가까우면 가운데에 가까운 것
         # (2026-10-09 pinky1: 둘 다 발밑일 때 오른쪽 다른 파랑으로 가다 벽 / pinky2: 가운데만 보고 고르니 바로 앞 좌회전 표지판 대신
         #  멀리 있는 유턴 구간 표지판을 골라 엉뚱한 곳에서 좌회전)
@@ -246,6 +256,8 @@ class LaneController:
         self.after_turn = self.state == SIGN_SEARCH          # 돈 뒤 다음 표지판: 먼저 제자리에서 정면으로 맞춘다
         self.target, self.t_target, self.t_align, self.aligned, self.at_sign = sign, now, None, False, False
         self.align_off = False
+        self.pulse_until = self.settle_until = -1.0
+        self.t_walled = None
         self.t_yolo = now
         self.pid.reset()
         self._go(SIGN_APPROACH, now, f'{sign[0]} ({why})')
@@ -337,7 +349,8 @@ class LaneController:
         if sign is None:
             # 돌다 보면 표지판이 반대쪽으로 확 넘어가 '같은 표지판'으로 안 이어질 수 있다 -> 보이는 것 중 가운데에 가까운 것을 다시 잡는다
             # (2026-10-09 pinky2: 오른쪽에 보던 직우가 돌면서 왼쪽으로 넘어갔는데 계속 오른쪽으로 찾으며 빙빙 돎)
-            seen = [sg for sg in p.signs if sg[3] >= cfg.sign_search_row]
+            seen = [sg for sg in p.signs if sg[3] >= self.target[3] - cfg.sign_track_back_row
+                    and sg[2] >= self.target[2] - cfg.sign_track_back_row]
             if seen:
                 sign = min(seen, key=lambda sg: abs(sg[1]))
                 self.target, self.t_target = sign, now
@@ -348,7 +361,7 @@ class LaneController:
                 # 못 찾았다: 도착으로 치지 말고 차선을 따라가다 다시 보이면 처음부터 (경로 순번은 그대로)
                 self.events.append((now, 'square up: sign lost'))
                 self.t_mode = now
-                self._go(SIGN_SEARCH if self.plan_i or self.exiting else LANE_FOLLOW, now, 'sign lost')
+                self._go(SIGN_HOLD, now, 'sign lost during alignment')
                 return Command(0.0, 0.0, self.state)
             if abs(self.target[1]) > cfg.sign_face_x:
                 return pulse(turn_to(self.target[1]), 0.5, 'find sign')        # 옆으로 빠졌다 -> 그쪽으로 조금씩 돈다
@@ -359,12 +372,16 @@ class LaneController:
         if not self.align_shaft and sign[3] < cfg.sign_align_near_row:
             v, w = self._steer(Perception(ok=True, offset=x), dt, cfg.v_min)
             return Command(cfg.v_min, w, SIGN_APPROACH, 'to sign')
-        if sign[2] > cfg.sign_align_far_row:
+        if sign[2] > cfg.sign_align_far_row or sign[3] >= 0.95:
             return skip('too close')                                  # 너무 가까워 축이 안 보인다
         self.align_shaft = True
         if not p.sign_angles:
-            return Command(0.0, 0.0, SIGN_APPROACH, 'align')
-        err = min(p.sign_angles, key=lambda a: abs(a[0] - x))[1]
+            return skip('shaft not visible')
+        angles = [a for a in p.sign_angles if abs(a[0] - x) <= cfg.sign_blue_dx
+                  and (len(a) < 4 or abs(a[2] - sign[2]) <= cfg.sign_track_back_row)]
+        if not angles:
+            return skip('no matching shaft')
+        err = min(angles, key=lambda a: abs(a[0] - x))[1]
         if abs(err) <= cfg.sign_align_deg:
             # 멈춘 채로 sign_align_confirm 번 연속 맞아야 맞은 것으로 본다
             self.ok_hits += 1
@@ -405,6 +422,7 @@ class LaneController:
             self.events.append((now, f'{self.plan_name} done'))
             self._go(LANE_FOLLOW, now, 'plan done')
         else:
+            self.backoff_run, self.backoff_done = 0.0, False
             self._go(SIGN_SEARCH, now, 'next sign')
 
     def _role_step(self, p, now, dt=0.0):
@@ -441,9 +459,10 @@ class LaneController:
             return Command(cfg.v_min, 0.0, self.state, 'straight out')
         if self.plan_done:
             if not self.cleared:
-                # 1차선: S 를 곧장 지난 뒤 구간을 벗어날 때까지 오른쪽 선만 따라간다. 왼쪽은 초록 칸 입구라 흰 선이 그쪽으로 꺾여 있다
-                # (2026-10-09: S 직진 뒤 차선 따라가기로 돌아가자 칸 입구 선을 따라 좌회전)
-                self.prefer = 'right' if cfg.lane_role == 1 and self.plan_name == 'plan_lane1' else self.prefer
+                # 마지막 회전 직후에는 흰 선 하나만 화면 오른쪽에 보인다. 자동 분류에 맡기면
+                # 그 선을 왼쪽 경계로 오인해 벽 쪽으로 꺾으므로 구간을 벗어날 때까지 오른쪽 경계로 고정한다.
+                if self.plan_name in ('plan_lane1', 'plan_lane2', 'plan_lane2_exit'):
+                    self.prefer = 'right'
                 self._clear_step(now)
                 if self.cleared:
                     self.prefer = ''
@@ -470,6 +489,17 @@ class LaneController:
             if cfg.lane_role == 1:
                 self._junction(True)                  # 줄만 선다. 기다리는 건 R1 위에서 (2026-10-09 영상: R1 을 멀리서 보자마자 서서 기다림)
             self._set_plan('plan_lane1' if cfg.lane_role == 1 else 'plan_lane2', now)
+        # 회전 직후 다음 표지판이 카메라 바로 밑에 걸리면 모양 전체를 볼 수 없다.
+        # 이때 먼 직우 표지를 다음 순번으로 고르지 말고, 한 번만 짧게 후진해 가까운 표지판을 다시 본다.
+        if self.state == SIGN_SEARCH and not self.exiting and not self.backoff_done and cfg.sign_backoff_m > 0:
+            close = [s for s in p.signs if abs(s[1]) <= cfg.sign_face_x and s[2] >= cfg.sign_arrive_far_row]
+            if close:
+                self.backoff_run += cfg.v_min * dt
+                if self.backoff_run < cfg.sign_backoff_m:
+                    self.t_mode = now
+                    return Command(-cfg.v_min, 0.0, SIGN_SEARCH, 'back up to see sign')
+                self.backoff_done = True
+                self.t_mode = now
         sign = self._wanted_sign(p)
         if sign is not None:
             self._approach(sign, now, 'seen')
@@ -479,15 +509,11 @@ class LaneController:
             if now - self.t_mode < cfg.sign_search_sec:
                 self.t_seen = now
                 return Command(cfg.v_min, 0.0, self.state, 'look for sign')
-            # 깃발·락은 바로 내리지 않는다: junction_clear_sec 동안 흰 차선을 따라 구간을 벗어난 뒤 내린다 (_clear_step)
-            # (2026-10-09: 1차선이 R2 를 못 찾고 포기하자마자 깃발을 내려 칸의 2차선이 나와 버렸다)
-            self.plan_done, self.exiting = True, False
-            self.cleared = cfg.lane_role != 1 or not self.flag_up
-            if self.cleared:
-                self._junction(False)
-            self.t_mode = now
+            # 표지판을 못 찾은 채 흰 차선을 따라가면 잘못된 분기에서 이탈한다.
+            # 경로와 깃발을 유지하고 정지한다.
             self.events.append((now, f'sign not found ({self.plan_name}): {self.plan_text}'))
-            self._go(LANE_FOLLOW, now, 'give up plan')
+            self._go(SIGN_HOLD, now, 'next sign not found')
+            return Command(0.0, 0.0, SIGN_HOLD, 'next sign not found')
         return None
 
     @property
@@ -496,7 +522,7 @@ class LaneController:
 
     # ----- 외부 명령 -----
     def start(self, now=0.0):
-        if self.state in (IDLE, ESTOP, LOST, PARKED):
+        if self.state in (IDLE, ESTOP, LOST, PARKED, SIGN_HOLD):
             self.pid.reset()
             self.last_offset, self.jumps = None, 0
             self.t_seen = None
@@ -647,6 +673,8 @@ class LaneController:
             self._flag(True)
         if cfg.lane_role == 2 and (self.lane2_up or (self.plan and not (self.pocket_parked or self.plan_done))):
             self._flag2(True)                         # 표지판 기동 중에도 '2차선 진행 중' 깃발을 계속 올린다 (안 부르면 4초 뒤 사라진다)
+        if self.state == SIGN_HOLD:
+            return Command(0.0, 0.0, SIGN_HOLD, 'sign lost: reposition and START')
         if self.state == POCKET_END:
             self.advance += cfg.v_min * dt
             if self.advance < cfg.zone_advance_m:
@@ -688,66 +716,66 @@ class LaneController:
             if wait is not None:
                 return wait
         if self.state == SIGN_APPROACH:
-            # 표지판 가운데를 보고 천천히 간다. 화면 아래로 완전히 사라질 때까지(= 표지판 위에 올라탈 때까지) 간 뒤 꺾는다.
-            # (2026-10-09 현장 요청: 보이자마자 꺾으면 차선을 넘는다)
+            # 표지판 가운데를 보고 천천히 간다. 먼 끝이 충분히 가까워지면 멈춘다.
             sign = self._wanted_sign(p, tracking=True)
             if sign is not None:
                 self.target, self.t_target, self.t_yolo = sign, now, now
-            if self.after_turn and sign is not None and not self.exiting and not self._align_kind():
+            if self.after_turn and not self.exiting and not self._align_kind():
                 # 돈 뒤 다음 표지판이 옆에 보이면 조금 돌고 멈춰 다시 보는 식으로 정면에 놓은 뒤 다가간다 (현장 요청)
                 if now < self.pulse_until:
                     return Command(0.0, self.pulse_w, SIGN_APPROACH, 'face step')
                 if now < self.settle_until:
                     return Command(0.0, 0.0, SIGN_APPROACH, 'settle')
-                if abs(sign[1]) > cfg.sign_face_x:
+                if sign is not None and abs(sign[1]) > cfg.sign_face_x:
                     self.pulse_w = -cfg.sign_align_w if sign[1] > 0 else cfg.sign_align_w
                     self.pulse_until = now + cfg.sign_step_min_sec + (cfg.sign_step_max_sec - cfg.sign_step_min_sec) * min(1.0, abs(sign[1]))
                     self.settle_until = self.pulse_until + cfg.sign_settle_sec
                     return Command(0.0, self.pulse_w, SIGN_APPROACH, 'face sign')
-                self.after_turn = False
+                if sign is not None:
+                    self.after_turn = False
             if self._align_kind() and not self.aligned and not self.align_off:
                 cmd = self._square_up(sign, p, now, dt)
                 if cmd is not None:
                     return cmd
             arrived = False
+            expected_kind = self.plan[self.plan_i][0] if self.plan_i < len(self.plan) else ''
+            distance_stop = expected_kind in ('straight_right', 'any')
             # 표지판 위에서 앞이 막혔다 (가벽) = 더 못 간다 -> 여기를 표지판 끝으로 본다
             # (2026-10-09 pinky2: 직우 막대 위에서 앞 가벽이 10cm 안이라 안전 정지에 걸린 채 24초 멈춤)
             walled = front_m is not None and front_m < cfg.hold_front_m + 0.01 and self.target is not None \
                 and self.target[3] >= cfg.sign_gone_row
             self.t_walled = (self.t_walled or now) if walled else None
-            short_sign = self.plan_i < len(self.plan) and self.plan[self.plan_i][0] != 'straight_right' and not self.exiting
-            if sign is not None and short_sign and sign[2] >= cfg.sign_arrive_far_row and abs(sign[1]) <= cfg.sign_arrive_x:
-                # 우회전/좌회전 표지판: 먼 끝까지 화면 아래로 내려왔으면(= 거의 발밑) 다 사라지기를 기다리지 않고 여기서 멈춘다.
-                # 카메라가 앞 10cm 를 못 봐서, 다 사라질 때까지 가면 표지판을 한참 지나 돈다 (2026-10-09 현장: 너무 가서 돈다)
+            if distance_stop and sign is not None and not self.exiting \
+                    and sign[2] >= cfg.sign_arrive_far_row and abs(sign[1]) <= cfg.sign_arrive_x:
+                # 위아래로 긴 직우 표지는 끝까지 밟으면 너무 멀리 간다. 먼 끝이 기준선에 오면 멈춘다.
                 self.events.append((now, f'sign end: far edge {sign[2]:.2f}'))
                 arrived = True
-            elif walled and now - self.t_walled >= cfg.sign_wall_sec:
+            elif distance_stop and walled and now - self.t_walled >= cfg.sign_wall_sec:
                 self.events.append((now, f'sign end: wall {front_m:.2f}m'))
                 sign, arrived = None, True
             elif sign is None:
                 gone = now - self.t_target
-                side = abs(self.target[1]) > cfg.sign_arrive_x and not self.exiting and not self.aligned
-                if self.target[3] >= cfg.sign_gone_row and side and gone < cfg.sign_find_sec:
+                side = abs(self.target[1]) > cfg.sign_arrive_x and not self.exiting
+                if self.target[3] >= cfg.sign_gone_row and side:
                     # 옆으로 빠졌다 = 표지판 위가 아니라 옆을 지나가는 중 -> 그쪽으로 제자리에서 돌아 다시 찾는다
                     # (2026-10-09 pinky1: R1·R2 가 화면 오른쪽 아래로 빠졌는데 '도착'으로 보고 표지판 옆에서 꺾음)
                     if gone < cfg.sign_gone_sec:
                         return Command(0.0, 0.0, SIGN_APPROACH, 'look')
+                    if gone >= cfg.sign_find_sec:
+                        self._go(SIGN_HOLD, now, 'sign lost sideways')
+                        return Command(0.0, 0.0, SIGN_HOLD, 'sign lost sideways')
                     return Command(0.0, -cfg.sign_align_w if self.target[1] > 0 else cfg.sign_align_w, SIGN_APPROACH, 'find sign')
-                # YOLO 가 잠깐 놓쳐도 색으로 본 파랑이 아직 발 앞에 있으면 표지판 위가 아니다 (긴 직우의 오른쪽 화살표까지 지나가야 도착)
-                # (2026-10-09 pinky2: 직우 긴 막대 위에서 YOLO 가 0.3초 놓치자 '도착'으로 보고 오른쪽 화살표 한참 앞에서 우회전)
-                long_sign = self.plan_i < len(self.plan) and self.plan[self.plan_i][0] == 'straight_right'
-                if long_sign and now - self.t_yolo < cfg.sign_blue_sec and any(len(a) > 3 and a[3] >= cfg.sign_blue_row and abs(a[0] - self.target[1]) <= cfg.sign_blue_dx
-                       for a in p.sign_angles):
-                    self.t_target = now
-                    return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'blue ahead')
-                if self.target[3] >= cfg.sign_gone_row:            # 화면 아래로 빠져나갔다
+                # HSV 표지판 자체를 매 프레임 추적하므로, 별도 축 조각을 보고
+                # 전진 시간을 연장하지 않는다. 앞쪽 다른 표지판을 쫓는 원인이었다.
+                if self.target[3] >= cfg.sign_gone_row and self.target[2] >= min(cfg.sign_arrive_far_row, 0.75) - 0.10:
                     arrived = gone >= cfg.sign_gone_sec
                     if not arrived:
-                        return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'over sign')
+                        return Command(0.0, 0.0, SIGN_APPROACH, 'confirm sign end')
                 elif gone > cfg.lost_timeout_sec:                   # 멀리서 놓쳤다 -> 다시 찾기
-                    self._go(SIGN_SEARCH if self.plan_i or self.exiting else LANE_FOLLOW, now, 'sign lost')
-                    self.t_mode = now
+                    self._go(SIGN_HOLD, now, 'sign lost before arrival')
                     return Command(0.0, 0.0, self.state)
+                else:
+                    return Command(0.0, 0.0, SIGN_APPROACH, 'sign missing')
             if arrived:
                 self.exiting, self.at_sign = False, True
                 wait = self._arrived(now)
@@ -767,7 +795,7 @@ class LaneController:
                     v, w = self._steer(p, dt, cfg.v_min)
                 else:
                     v, w = self._steer(Perception(ok=True, offset=self.target[1]), dt, cfg.v_min)
-                return Command(cfg.v_min, w, SIGN_APPROACH)
+                return Command(cfg.v_min, max(-cfg.sign_steer_w, min(cfg.sign_steer_w, w)), SIGN_APPROACH)
         if self.state == SIGN_ADVANCE:
             self.advance += cfg.v_min * dt
             if self.advance < self.advance_m:
@@ -880,7 +908,9 @@ class LaneController:
                 # 횡단보도 위에서 차선이 안 보이면 곧장 (직전 조향을 이어 가면 벽으로 꺾인다)
                 return Command(cfg.v_min, 0.0, CROSSING, 'blind')
             if since <= cfg.lost_grace_sec:
-                return Command(cfg.v_min, self.last_w, self.state, 'grace')
+                # 마지막 실주행에서 직전 조향이 포화(+/-1.4)된 채 유지돼 차선 끝에서
+                # 한 바퀴 가까이 돌았다. 잠깐 놓쳐도 그 자리에서 기다리면 다시 잡는다.
+                return Command(0.0, 0.0, self.state, 'grace stop')
             if self.prefer and since <= cfg.side_search_sec:
                 # 따라가던 쪽 선을 놓쳤다 (선이 그쪽으로 급하게 꺾였다) -> 그쪽으로 제자리 회전하며 찾는다
                 w = -cfg.side_spin_w if self.prefer == 'right' else cfg.side_spin_w
@@ -890,7 +920,7 @@ class LaneController:
                     self._release()
                     self._go(LOST, now, 'no lane')
                 return Command(0.0, 0.0, LOST)
-            return Command(cfg.v_min, self.last_w * 0.5, self.state, 'searching')
+            return Command(0.0, 0.0, self.state, 'waiting for lane')
 
         if self.state == LOST:
             self.pid.reset()

@@ -86,7 +86,8 @@ def test_lost_then_recover():
     cfg = Config()
     c = started(cfg)
     c.step(lane(0.2), None, 0.1)
-    assert c.step(NOTHING, None, 0.3).v > 0                 # 잠깐은 직전 조향 유지
+    grace = c.step(NOTHING, None, 0.3)
+    assert grace.v == 0 and grace.w == 0                   # 차선이 사라지면 직전 조향으로 돌지 않는다
     cmd = c.step(NOTHING, None, 0.1 + cfg.lost_timeout_sec + 0.1)
     assert cmd.state == LOST and cmd.v == 0
     assert c.step(lane(), None, 3.0).state == LANE_FOLLOW   # 다시 보이면 재개

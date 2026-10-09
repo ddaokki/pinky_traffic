@@ -15,12 +15,12 @@ lane_hsv_hi: [179, 70, 255]
 
 # 처음에는 느리게. 한 바퀴 돌면 0.02 씩 올린다.
 v_max: 0.08
-kp: 1.6
-kd: 0.25
+kp: 1.35                    # 2026-10-09 실주행: 1.6은 직선에서도 좌우 조향이 자주 뒤집힘
+kd: 0.12                    # 영상 프레임별 차선 중심 잡음에 미분항이 과민하지 않게
 k_heading: 0.0
 
 crosswalk_stop_sec: 3.0     # 2026-10-04: 5초는 길어서 3초로
-crossing_sec: 5.0        # ★ 정지선에서 횡단보도를 완전히 지나가는 데 걸리는 시간보다 조금 길게
+crossing_sec: 8.0        # 횡단보도 뒤 흰 레인을 다시 잡을 때까지 곧장 전진 (5초는 2~3초 일찍 끝나 lost)
 crosswalk_stop_row: 0.80
 
 obstacle_stop_m: 0.10       # 2026-10-04: 0.22 는 벽 가까운 코너에서 돌기도 전에 멈췄다. 2026-10-09: 가벽 코너에서 0.148 에 걸려 0.10
@@ -31,6 +31,13 @@ lidar_yaw_offset_deg: 180.0 # ★ 2026-10-03 현장: pinky1 라이다 0도가 �
 route_color: ''              # 2026-10-04 새 맵: 주차 통로(빨강/파랑) 없음. 파랑은 유턴 선으로 쓴다 (lane_role)
 # 새 맵 역할은 실행할 때 준다: scripts/drive.sh pinky1 24 hsv "" 1  (1 = 1차선·파란 선 유턴, 2 = 2차선·초록 칸)
 lane_role: 0
+sign_advance_m: 0.06        # 직우 표지판 도착 뒤 6cm 추가 전진
+sign_arrive_far_row: 0.75   # 0.73의 체감이 작아 표지판 위로 조금 더 전진
+plan_lane1: 'turn:right:0.10, turn:right:0.07'  # 첫 회전은 8cm 가서 다음 회전 표지를 정면에 둔다
+sign_shape: true             # 긴 직우와 짧은 회전 표지를 파란 형상으로 구분
+sign_backoff_m: 0.04         # 첫 회전 뒤 다음 표지가 카메라 바로 밑이면 4cm 후진해 전체 모양 확인
+plan_lane2: 'straight_right:straight, turn:left:0.06, turn:left:0.06'  # 좌회전 표지는 파랑이 사라진 뒤 6cm 더 전진
+plan_lane2_exit: 'any:right, turn:left:0.06, turn:left:0.06'
 park_stop_m: 0.15           # ★ 라이다~벽 거리. 칸 끝 선을 넘으면 키우고, 너무 앞에서 서면 줄인다
 
 # 2대 운용 (1대 시연이 끝난 뒤에)
