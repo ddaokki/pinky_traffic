@@ -184,15 +184,26 @@ class LaneController:
         self.plan, self.plan_i, self.plan_name, self.plan_done = parse_plan(getattr(self.cfg, name)), 0, name, False
         self.events.append((now, f'plan {name}: {self.plan_text}'))
 
-    def _wanted_sign(self, p):
-        """경로의 다음 표지판과 같은 종류 중 가장 가까운 것."""
+    def _mine(self, sign, searching=False):
+        """내 차선 앞의 표지판인가: 화면 가운데 쪽(|x| <= sign_max_x)이고 충분히 가까이(가까운 끝 >= sign_start_row) 왔다.
+        (2026-10-09: 멀리서 보자마자 다가가 차선을 벗어났고, 1차선 로봇이 옆 차선의 직우 표지판으로 갔다)
+        다음 표지판을 찾으며 곧장 가는 중(searching)에는 조금 더 멀리 있어도 된다."""
+        row = self.cfg.sign_search_row if searching else self.cfg.sign_start_row
+        max_x = 0.9 if self.exiting else self.cfg.sign_max_x      # 칸에서 나올 때 입구의 직우는 왼쪽으로 길게 보인다
+        return abs(sign[1]) <= max_x and sign[3] >= row
+
+    def _wanted_sign(self, p, tracking=False):
+        """경로의 다음 표지판과 같은 종류 중 내 차선 앞에서 가장 가까운 것.
+        tracking: 이미 다가가는 중이면 거리·위치 조건 없이, 쫓던 표지판과 가로 위치가 가장 가까운 것(다른 표지판으로 갈아타지 않게)."""
         if self.plan_i >= len(self.plan):
             return None
         kind = self.plan[self.plan_i][0]
-        for sign in p.signs:
-            if kind in ('any', sign[0]) or sign[0] == 'blue':     # 'blue' = 색으로 찾아 종류를 모른다 -> 가장 가까운 것
-                return sign
-        return None
+        ok = [s for s in p.signs if kind in ('any', s[0]) or s[0] == 'blue']   # 'blue' = 종류를 모른다
+        if tracking and self.target is not None:
+            near = [s for s in ok if abs(s[1] - self.target[1]) <= 0.5]
+            return min(near, key=lambda s: abs(s[1] - self.target[1])) if near else None
+        searching = self.state == SIGN_SEARCH or self.exiting
+        return next((s for s in ok if self._mine(s, searching)), None)
 
     def _approach(self, sign, now, why):
         self.target, self.t_target = sign, now
@@ -284,7 +295,7 @@ class LaneController:
             return None
         if not self.plan and not self.pocket_parked:
             first = 'turn' if cfg.lane_role == 1 else 'straight_right'
-            sign = next((s for s in p.signs if s[0] in (first, 'blue')), None)
+            sign = next((s for s in p.signs if s[0] in (first, 'blue') and self._mine(s)), None)
             if sign is None:
                 return None
             if cfg.lane_role == 1 and not self._junction(True):
@@ -463,7 +474,7 @@ class LaneController:
         if self.state == SIGN_APPROACH:
             # 표지판 가운데를 보고 천천히 간다. 화면 아래로 완전히 사라질 때까지(= 표지판 위에 올라탈 때까지) 간 뒤 꺾는다.
             # (2026-10-09 현장 요청: 보이자마자 꺾으면 차선을 넘는다)
-            sign = self._wanted_sign(p)
+            sign = self._wanted_sign(p, tracking=True)
             if sign is not None:
                 self.target, self.t_target = sign, now
             arrived = False

@@ -126,3 +126,21 @@ def test_side_ranges_from_scan():
     assert sector_range(scan, 35, 110) == pytest.approx(0.12, abs=1e-5)
     assert sector_range(scan, -110, -35) == pytest.approx(0.20, abs=1e-5)
     assert sector_range(scan, 35, 110, yaw_offset_deg=180.0) == pytest.approx(0.20, abs=1e-5)   # 라이다가 뒤로 달린 로봇
+
+
+def test_side_object_ignores_long_wall_but_sees_robot():
+    pytest.importorskip('rclpy')
+    from sensor_msgs.msg import LaserScan
+    from pinky_traffic.nodes.lane_driver import side_object
+    scan = LaserScan()
+    n = 360
+    scan.angle_min, scan.angle_increment = -math.pi, 2 * math.pi / n
+    scan.range_min, scan.range_max = 0.05, 12.0
+    ranges = [2.0] * n
+    for a in range(-170, -9):                        # 오른쪽에 0.07m 떨어진 곧은 벽 (y = -0.07), 앞뒤로 길게
+        ranges[n // 2 + a] = min(2.0, 0.07 / abs(math.sin(math.radians(a))))
+    for a in range(60, 76):                          # 왼쪽에 로봇 (짧은 덩어리)
+        ranges[n // 2 + a] = 0.09
+    scan.ranges = ranges
+    assert side_object(scan, -110, -35, near_m=0.2, wall_len=0.30) is None            # 벽은 무시
+    assert side_object(scan, 35, 110, near_m=0.2, wall_len=0.30) == pytest.approx(0.09, abs=1e-5)

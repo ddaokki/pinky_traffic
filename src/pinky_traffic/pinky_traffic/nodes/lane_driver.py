@@ -42,6 +42,28 @@ def sector_range(scan: LaserScan, from_deg, to_deg, yaw_offset_deg=0.0):
     return float(ranges[valid].min()) if valid.any() else None
 
 
+def side_object(scan: LaserScan, from_deg, to_deg, yaw_offset_deg=0.0, near_m=0.2, wall_len=0.25):
+    """측면 부채꼴에서 near_m 안에 있는 점들. 길게 이어지면(wall_len 이상) 벽으로 보고 None, 짧은 덩어리(로봇)면 최소 거리.
+    (2026-10-09: 코너에서 가벽이 옆 7cm 로 들어와 옆구리 안전 정지가 걸려 멈췄다)"""
+    ranges = np.asarray(scan.ranges, dtype=np.float32)
+    if ranges.size == 0:
+        return None
+    angles = scan.angle_min + np.arange(ranges.size) * scan.angle_increment - math.radians(yaw_offset_deg)
+    angles = np.arctan2(np.sin(angles), np.cos(angles))
+    deg = np.degrees(angles)
+    near = np.isfinite(ranges) & (ranges > max(scan.range_min, 0.03)) & (ranges < near_m) & (deg >= from_deg) & (deg <= to_deg)
+    if not near.any():
+        return None
+    # 벽인지는 더 넓게 본다: 그쪽 옆 전체(5~170도)에서 0.25m 안의 점들이 길게 이어지면 벽 (가까운 벽은 앞뒤로 길게 보인다)
+    sign = 1.0 if from_deg >= 0 else -1.0
+    wide = np.isfinite(ranges) & (ranges > max(scan.range_min, 0.03)) & (ranges < 0.25) & \
+        (sign * deg >= 5.0) & (sign * deg <= 170.0)
+    xs, ys = ranges[wide] * np.cos(angles[wide]), ranges[wide] * np.sin(angles[wide])
+    if math.hypot(xs.max() - xs.min(), ys.max() - ys.min()) >= wall_len:
+        return None                                     # 벽
+    return float(ranges[near].min())
+
+
 def front_range(scan: LaserScan, half_angle_deg, yaw_offset_deg=0.0):
     """라이다에서 정면 ±half_angle 안의 최소 거리. 유효값이 없으면 None."""
     return sector_range(scan, -half_angle_deg, half_angle_deg, yaw_offset_deg)
@@ -114,8 +136,10 @@ class LaneDriverNode(Node):
     def on_scan(self, msg):
         cfg = self.cfg
         self.front = front_range(msg, cfg.front_angle_deg, cfg.lidar_yaw_offset_deg)
-        self.sides = (sector_range(msg, cfg.side_angle_from, cfg.side_angle_to, cfg.lidar_yaw_offset_deg),
-                      sector_range(msg, -cfg.side_angle_to, -cfg.side_angle_from, cfg.lidar_yaw_offset_deg))
+        near = max(cfg.side_slow_m, cfg.side_stop_m) + 0.05
+        self.sides = (side_object(msg, cfg.side_angle_from, cfg.side_angle_to, cfg.lidar_yaw_offset_deg, near, cfg.side_wall_len),
+                      side_object(msg, -cfg.side_angle_to, -cfg.side_angle_from, cfg.lidar_yaw_offset_deg, near,
+                                  cfg.side_wall_len))
         self.t_scan = time.time()
 
     def on_compressed(self, msg):

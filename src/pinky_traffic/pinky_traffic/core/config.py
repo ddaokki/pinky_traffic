@@ -76,6 +76,7 @@ class Config:
     side_slow_m: float = 0.10        # 이 안이면 반대쪽으로 조향 + 감속 (실제 틈 약 4cm)
     side_stop_m: float = 0.07        # 이 안이면 전진은 멈추고 피하는 회전만 (실제 틈 약 1~2cm)
     side_push_w: float = 0.8         # 피하는 회전 세기 (rad/s, 가까울수록 이만큼까지)
+    side_wall_len: float = 0.30      # 그쪽 옆(5~170도) 0.25m 안의 점들이 이 길이 이상 이어지면 벽(무시), 짧으면 로봇 (로봇 폭 약 11cm)
     intrude_offset: float = 0.6      # 시연용 끼어들기: 차선 중심을 이만큼 옆으로 밀어 본다 (약 13cm)
     intrude_sec: float = 4.0
     hold_front_m: float = 0.15       # 어떤 상태든 앞이 이보다 가까우면 전진만 멈춘다 (표지판 기동·칸 안 포함)
@@ -134,6 +135,9 @@ class Config:
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
+    sign_start_row: float = 0.55     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다)
+    sign_search_row: float = 0.40    # 표지판을 지나 다음 표지판을 찾으며 곧장 가는 중에는 이 행부터
+    sign_max_x: float = 0.45         # 화면 가운데에서 이 범위 안(내 차선 앞)의 표지판만 (옆 차선 표지판 무시)
     sign_long_ratio: float = 3.0     # sign_shape 일 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
     # 2026-10-09 현장: 카메라가 낮아(6.5cm) 바닥 표지판이 납작하게 보여 우회전 표지판도 길쭉하다 -> 모양 구분이 틀린다.
     # 색으로 찾을 때는 종류를 정하지 않고('blue') 가장 가까운 표지판을 경로의 다음 표지판으로 본다. 종류 구분은 YOLO 가 한다.
