@@ -24,6 +24,7 @@ class Perception:
     right_seen: bool = False
     crosswalk: bool = False
     crosswalk_y: float = 0.0         # 횡단보도 아래 끝 행 / 높이 (클수록 가깝다)
+    crosswalk_x: float = 0.0         # 줄무늬 전체의 가로 가운데 (-1..1) = 차선 가운데 (건널 때 이걸 보고 간다)
     obstacle_y: float = 0.0          # yolo 'robot' 박스 아래 끝 / 높이 (0 = 없음)
     target: Optional[Tuple[int, int]] = None
     centers: List[Tuple[int, int]] = field(default_factory=list)
@@ -155,6 +156,8 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
             ys = np.flatnonzero(crosswalk.any(axis=1))
             p.crosswalk = True
             p.crosswalk_y = float(ys.max() / (h - 1))
+            xs = np.flatnonzero(crosswalk.any(axis=0))
+            p.crosswalk_x = float(((xs.min() + xs.max()) / 2.0 - half) / half)
     return p
 
 

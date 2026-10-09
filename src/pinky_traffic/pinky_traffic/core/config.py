@@ -108,7 +108,7 @@ class Config:
     zone_roi_top: float = 0.25       # 초록 선은 이 행 아래에서 찾는다 (칸에 막 들어섰을 때는 멀어서 차선 ROI 보다 위에 보인다)
     exit_blind_sec: float = 10.0     # 칸에서 나올 때 파란 선이 발밑에 올 때까지 곧장 가는 최대 시간
     pocket_giveup_sec: float = 15.0  # 칸 쪽으로 돈 뒤 이 시간 안에 초록 앞에 못 서면 칸을 포기하고 보통 주행으로 돌아간다
-    pocket_blind_sec: float = 4.0    # 칸 쪽으로 돈 뒤 초록이 아직 안 보이면 이 시간까지는 곧장 간다 (흰 선 좌우 구분을 믿지 않는다)
+    pocket_blind_sec: float = 15.0   # 칸 쪽으로 돈 뒤 초록이 아직 안 보이면 이 시간까지는 곧장 간다 (흰 선 좌우 구분을 믿지 않는다)
     exit_advance_m: float = 0.06
     pocket_turn_deg: float = 90.0
     side_spin_w: float = 0.6         # 한쪽 선만 따라가는 중에 그 선을 놓치면 그쪽으로 제자리 회전하며 찾는다 (rad/s)
@@ -168,6 +168,10 @@ class Config:
     sign_center_row: float = 0.65    # 표지판 가까운 끝이 이 행 아래로 오면 차선 대신 표지판 가운데를 보고 간다 (위에 올라타게)
     sign_arrive_x: float = 0.5       # 표지판이 이보다 옆에서 사라지면 '도착'이 아니라 옆을 지나친 것 -> 그쪽으로 돌아 다시 찾는다
     sign_find_sec: float = 3.0       # 그렇게 다시 찾는 시간 (넘으면 도착으로 본다)
+    sign_blue_row: float = 0.45      # 다가가다 YOLO 가 놓쳐도 이 행 아래에 파랑(색)이 남아 있으면 아직 도착이 아니다
+    sign_blue_dx: float = 0.7        # 쫓던 표지판과 가로로 이만큼 안의 파랑만
+    sign_blue_sec: float = 4.0       # YOLO 가 이보다 오래 못 보면 색만 남아 있어도 도착으로 본다
+    crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
     sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
     sign_align_plans: str = 'plan_lane2'   # 정면 맞추기를 하는 경로 (1차선은 S 를 U턴 직후 발밑에서 보므로 안 한다)
     sign_align_near_row: float = 0.75   # 표지판 가까운 끝이 이 행 아래로 오면 (= 바로 앞) 멈추고 맞춘다

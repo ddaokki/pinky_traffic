@@ -48,9 +48,7 @@
   td.note input { width:100%; background:#141a21; border:1px solid var(--line); color:var(--text); border-radius:4px; padding:3px 5px; font:inherit; }
   .tcwrap { max-height:520px; overflow:auto; }
   .muted { color:var(--dim); }
-  .screen { position:relative; }
-  .seen { position:absolute; left:50%; top:12%; transform:translateX(-50%); padding:8px 18px; border-radius:8px;
-          font-weight:800; font-size:20px; background:rgba(210,153,34,.92); color:#111; display:none; white-space:nowrap; }
+  .badge.seen { background:#d29922; color:#111; font-weight:800; display:none; }
   #sliders { display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:0 24px; }
   .bottom { padding:0 16px 16px; }
   label.chk { display:flex; gap:6px; align-items:center; margin:6px 0; }
@@ -93,8 +91,8 @@ function card(name) {
   if (!Object.keys(cards).length) $('robots').innerHTML = '';
   const el = document.createElement('div');
   el.className = 'robot';
-  el.innerHTML = `<div class="head"><span class="name"></span><span class="role badge"></span><span class="badge state"></span></div>
-    <div class="screen"><img alt="디버그 영상"><div class="seen"></div></div><div class="kv"></div><canvas width="600" height="120"></canvas>
+  el.innerHTML = `<div class="head"><span class="name"></span><span class="role badge"></span><span class="badge seen"></span><span class="badge state"></span></div>
+    <img alt="디버그 영상"><div class="kv"></div><canvas width="600" height="120"></canvas>
     <div class="row"><button class="go">▶ START</button><button class="s">■ STOP</button><button class="estop">비상정지</button></div>
     <div class="row lane"><span>놓은 차선</span><button class="l1">1차선</button><button class="l2">2차선</button><button class="l0">역할 없음</button></div>
     <div class="row lane"><span>시연</span><button class="il">← 끼어들기</button><button class="ir">끼어들기 →</button></div>`;
@@ -142,16 +140,13 @@ function render(s) {
     ].map(([k,v]) => `<div><span>${k}</span>${v}</div>`).join('');
     drawHistory(el.querySelector('canvas'), r.history || []);
   }
-  // 상대 차선 로봇의 신호(서버 깃발)를 받으면 그 로봇 화면 위에 잠깐 띄운다: 1차선 화면엔 '2차선 인식', 2차선 화면엔 '1차선 인식'
+  // 상대 차선 로봇의 신호(서버 깃발)를 받는 동안 역할 배지 옆에 표시: 1차선 카드엔 '2차선 인식', 2차선 카드엔 '1차선 인식'
   const flag = name => ((s.locks['flag:' + name] || {}).queue || []);
   for (const name of names) {
-    const role = (s.robots[name].state || {}).role || 0, el = card(name), box = el.querySelector('.seen');
+    const role = (s.robots[name].state || {}).role || 0, box = card(name).querySelector('.seen');
     const other = role === 1 ? flag('lane2') : role === 2 ? flag('oncoming') : [];
-    const on = other.some(x => x !== name);
-    if (on && !el.dataset.seenOn) el.dataset.seenUntil = Date.now() + 4000;   // 새로 켜진 순간부터 4초
-    el.dataset.seenOn = on ? '1' : '';
     box.textContent = role === 1 ? '2차선 인식' : '1차선 인식';
-    box.style.display = on && Date.now() < +(el.dataset.seenUntil || 0) ? 'block' : 'none';
+    box.style.display = other.some(x => x !== name) ? 'inline' : 'none';
   }
   const current = {...s.defaults, ...s.params};
   if (!dragging) $('coord').checked = !!current.use_coordinator;

@@ -28,7 +28,7 @@ def shaft_angle(ys, xs, h, w, horizon_row):
 
 
 def blue_angles(blue, cfg):
-    """파란 덩어리마다 [(x -1..1, 축 각도 오차)] (shaft_angle)."""
+    """파란 덩어리마다 [(x -1..1, 축 각도 오차, 먼 끝 행, 가까운 끝 행)] (shaft_angle)."""
     h, w = blue.shape[:2]
     n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
     out = []
@@ -38,7 +38,7 @@ def blue_angles(blue, cfg):
         ys, xs = np.nonzero(labels == i)
         a = shaft_angle(ys, xs, h, w, cfg.sign_horizon_row)
         if a is not None:
-            out.append((float((xs.mean() - w / 2.0) / (w / 2.0)), a))
+            out.append((float((xs.mean() - w / 2.0) / (w / 2.0)), a, float(ys.min() / (h - 1)), float(ys.max() / (h - 1))))
     return out
 
 
@@ -176,8 +176,7 @@ class HsvDetector:
             return
         blue = self.blue_mask(frame)
         self.signs = blue_signs(blue, cfg)
-        if cfg.sign_align_deg > 0:
-            self.angles = blue_angles(blue, cfg)
+        self.angles = blue_angles(blue, cfg)
         if self.signs:
             n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
             self.objects = [('sign', None, np.uint8(labels == i) * 255) for i in range(1, n)
