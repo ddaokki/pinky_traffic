@@ -189,7 +189,9 @@ class LaneController:
         (2026-10-09: 멀리서 보자마자 다가가 차선을 벗어났고, 1차선 로봇이 옆 차선의 직우 표지판으로 갔다)
         다음 표지판을 찾으며 곧장 가는 중(searching)에는 조금 더 멀리 있어도 된다."""
         row = self.cfg.sign_search_row if searching else self.cfg.sign_start_row
-        max_x = 0.9 if self.exiting else self.cfg.sign_max_x      # 칸에서 나올 때 입구의 직우는 왼쪽으로 길게 보인다
+        # 칸에서 나올 때 입구의 직우는 왼쪽으로 길게 보인다. 표지판을 지나 다음 표지판을 찾을 때도 옆에 보일 수 있다
+        # (2026-10-09 pinky2: 직우 직진 뒤 R2 가 옆에 보여 ±0.45 에 걸러져 그냥 지나감)
+        max_x = 0.9 if self.exiting else (self.cfg.sign_search_x if searching else self.cfg.sign_max_x)
         return abs(sign[1]) <= max_x and sign[3] >= row
 
     def _wanted_sign(self, p, tracking=False):

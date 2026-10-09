@@ -69,7 +69,7 @@ class Config:
     robot_stop: bool = False
     robot_conf: float = 0.8
     # 옆구리 침범 막기: 라이다 측면(side_angle_from~to 도, 좌우) 최소 거리. 나란히 달릴 때 옆 로봇까지는 보통 이보다 멀다
-    side_guard: bool = True
+    side_guard: bool = False         # 2026-10-09: 가운데 가벽을 옆 로봇으로 계속 오인해 1차선이 벽 옆에서 멈춤 -> 우선 끔
     side_angle_from: float = 35.0
     side_angle_to: float = 110.0
     # 2026-10-09 현장: 나란히 세우면 옆 로봇까지 0.14~0.15m (라이다는 로봇 가운데, 실제 틈 약 8cm), 바깥 벽도 0.15m
@@ -138,6 +138,7 @@ class Config:
     sign_start_row: float = 0.55     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다)
     sign_search_row: float = 0.40    # 표지판을 지나 다음 표지판을 찾으며 곧장 가는 중에는 이 행부터
     sign_max_x: float = 0.45         # 화면 가운데에서 이 범위 안(내 차선 앞)의 표지판만 (옆 차선 표지판 무시)
+    sign_search_x: float = 0.85      # 표지판을 지나 다음 표지판을 찾는 중에는 이만큼 옆까지
     sign_cw_block_row: float = 0.45  # 표지판 가까운 끝이 이 행 아래로 보이면 횡단보도 검출을 끈다 (표지판 우선)
     sign_long_ratio: float = 3.0     # sign_shape 일 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
     # 2026-10-09 현장: 카메라가 낮아(6.5cm) 바닥 표지판이 납작하게 보여 우회전 표지판도 길쭉하다 -> 모양 구분이 틀린다.

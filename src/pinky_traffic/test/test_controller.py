@@ -162,6 +162,7 @@ def test_waits_for_lock_then_releases_after_crossing():
 
 def test_side_guard_steers_away_and_slows():
     c = started()
+    c.cfg.side_guard = True
     c.step(lane(), None, 0.1)
     free = c.step(lane(), None, 0.2, sides=(0.14, 0.15))
     assert free.reason == '' and free.v > 0                               # 나란히 달리는 거리(14~15cm)면 그대로
@@ -181,6 +182,7 @@ def test_no_lidar_holds_the_wheels():
 
 def test_intrude_demo_drifts_toward_neighbor_and_ignores_own_guard():
     c = started()
+    c.cfg.side_guard = True
     c.step(lane(), None, 0.1)
     c.intrude(+1, 0.1)
     cmd = c.step(lane(), None, 0.2, sides=(0.30, 0.08))
