@@ -20,10 +20,11 @@ from pathlib import Path
 
 from ..core.config import Config, TUNABLE
 from ..core.coordinator import LockManager
+from .autocheck import AutoCheck
 
 HERE = Path(__file__).parent
 CSV_FIELDS = ['t', 'robot', 'state', 'v', 'w', 'offset', 'heading', 'ok', 'left', 'right', 'crosswalk',
-              'crosswalk_y', 'front', 'fps', 'ms', 'backend', 'route', 'route_end_y', 'role', 'prefer', 'sign', 'plan', 'zone_y', 'reason', 'led']
+              'crosswalk_y', 'front', 'fps', 'ms', 'backend', 'route', 'route_end_y', 'role', 'prefer', 'sign', 'plan', 'zone_y', 'reason', 'led', 'battery']
 
 
 class Hub:
@@ -44,6 +45,7 @@ class Hub:
         self.testcases = self._load_testcases(testcases_path)
         self.results_path = self.run_dir / 'testcase_results.json'
         self.results = json.loads(self.results_path.read_text()) if self.results_path.exists() else {}
+        self.auto = AutoCheck()
 
     @staticmethod
     def _load_testcases(path):
@@ -66,6 +68,13 @@ class Hub:
             if state.get('state') and state.get('state') != previous:
                 self.event(f"{name}: {previous} → {state['state']}")
             entry['state'], entry['t'] = state, now
+            for text in body.get('events', []):
+                self.event(f'{name}: {text}')
+            for case_id, result, note in self.auto.update(name, state, body.get('events', []), self.robots, now):
+                old = self.results.get(case_id, {}).get('result')
+                if old == 'pass' or (old == result and result == 'fail'):
+                    continue                       # 한 번 통과하면 그대로 (실패는 나중에 통과로 바뀔 수 있다)
+                self._set_result(case_id, result, '자동: ' + note)
             entry['history'].append([round(now, 2), state.get('offset', 0), state.get('v', 0), state.get('w', 0)])
             entry['history'] = entry['history'][-240:]
             self._csv(name, now, state)
@@ -124,9 +133,12 @@ class Hub:
 
     def set_result(self, case_id, result, note):
         with self.mutex:
-            self.results[case_id] = {'result': result, 'note': note, 't': time.strftime('%Y-%m-%d %H:%M:%S')}
-            self.results_path.write_text(json.dumps(self.results, ensure_ascii=False, indent=1), encoding='utf-8')
-            self.event(f'테스트 {case_id}: {result} {note}')
+            self._set_result(case_id, result, note)
+
+    def _set_result(self, case_id, result, note):
+        self.results[case_id] = {'result': result, 'note': note, 't': time.strftime('%Y-%m-%d %H:%M:%S')}
+        self.results_path.write_text(json.dumps(self.results, ensure_ascii=False, indent=1), encoding='utf-8')
+        self.event(f'테스트 {case_id}: {result} {note}')
 
 
 class Handler(BaseHTTPRequestHandler):

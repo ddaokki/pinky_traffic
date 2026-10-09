@@ -23,7 +23,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import CompressedImage, Image, LaserScan
-from std_msgs.msg import String
+from std_msgs.msg import Float32, String
 
 from ..core.config import Config
 from ..core.controller import LED_RED, PARKED
@@ -88,6 +88,7 @@ class LaneDriverNode(Node):
             self.create_subscription(Image, get('image_topic'), self.on_image, qos_profile_sensor_data)
         if get('use_scan'):
             self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
+        self.create_subscription(Float32, 'battery/voltage', self.on_battery, 10)
         self.create_timer(0.1, self.watchdog)
         self.led_client, self.led_now, self.led_warned = None, None, False
         if get('use_led'):
@@ -99,6 +100,9 @@ class LaneDriverNode(Node):
                 self.get_logger().warn('pinky_interfaces 가 없어 LED 는 끈다 (source ~/pinky/install/setup.bash)')
         self.get_logger().info(f"lane_driver: robot={get('robot')} backend={self.cfg.backend} lane_role={self.cfg.lane_role} "
                                f"image={get('image_topic')} dashboard={self.cfg.dashboard_url if get('use_dashboard') else 'off'}")
+
+    def on_battery(self, msg):
+        self.driver.battery = round(float(msg.data), 2)
 
     def on_scan(self, msg):
         self.front = front_range(msg, self.cfg.front_angle_deg, self.cfg.lidar_yaw_offset_deg)

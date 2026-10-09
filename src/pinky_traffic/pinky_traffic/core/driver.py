@@ -33,6 +33,8 @@ class Driver:
         # 발표용: 달리는 동안 표지판·로봇을 인식한 장면을 YOLO 결과 화면처럼 그려 따로 저장 (runs/showcase_<시각>_<로봇>/)
         self.showcase_dir = record_dir.replace('frames_', 'showcase_') if record_dir else None
         self._shown = 0
+        self.battery = None                 # 배터리 전압 (노드가 넣어 준다)
+        self._ev_last = None                # 대시보드로 보낸 마지막 제어기 이벤트
 
     def _forget(self):
         """출발할 때 차선 기억(폭·중심)을 비운다. 서 있는 동안 로봇을 들고 옮기면 엉뚱한 화면으로 기억이 채워진다."""
@@ -119,7 +121,15 @@ class Driver:
                 ok, jpeg = cv2.imencode('.jpg', self.debug, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 if ok:
                     self.link.frame(jpeg.tobytes())
+        state['battery'] = self.battery
         self.state = state
+        if self.link:
+            events = self.controller.events
+            idx = next((i for i in range(len(events) - 1, -1, -1) if events[i] is self._ev_last), None)
+            fresh = events[idx + 1:] if idx is not None else events
+            if fresh:
+                self.link.add_events([text for _, text in fresh])
+                self._ev_last = events[-1]
         return cmd
 
     def idle_report(self, reason, now=None):

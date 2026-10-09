@@ -296,7 +296,7 @@ class LaneController:
             self.plan_done, self.exiting, self.cleared = True, False, True
             self._junction(False)
             self._flag(False)
-            self.events.append((now, f'sign not found: {self.plan_text}'))
+            self.events.append((now, f'sign not found ({self.plan_name}): {self.plan_text}'))
             self._go(LANE_FOLLOW, now, 'give up plan')
         return None
 

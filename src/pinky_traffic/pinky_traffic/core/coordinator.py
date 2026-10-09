@@ -131,6 +131,7 @@ class DashLink:
         self._release = set()
         self._granted = {}
         self._flags = set()             # 내가 올린 깃발
+        self._events = []               # 제어기 이벤트 (보낼 때까지 모은다, 테스트케이스 자동 판정용)
         self._others = set()            # 다른 로봇이 올린 깃발 (서버 응답)
         self._params_version = -1
         self._mutex = threading.Lock()
@@ -164,6 +165,10 @@ class DashLink:
         with self._mutex:
             (self._flags.add if on else self._flags.discard)(name)
 
+    def add_events(self, events):
+        with self._mutex:
+            self._events = (self._events + list(events))[-100:]
+
     def others_flag(self, name):
         with self._mutex:
             return name in self._others if self.connected else True
@@ -181,9 +186,10 @@ class DashLink:
             t0 = time.time()
             with self._mutex:
                 body = {'robot': self.robot, 'state': self._state, 'want': list(self._want),
-                        'release': list(self._release), 'flags': sorted(self._flags),
+                        'release': list(self._release), 'flags': sorted(self._flags), 'events': self._events,
                         'params_version': self._params_version}
                 self._release.clear()
+                self._events = []
                 jpeg, self._jpeg = self._jpeg, None
             try:
                 reply = json.loads(self._post('/api/report', json.dumps(body).encode()))

@@ -124,10 +124,31 @@ def test_lock_denied_when_server_unreachable():
 def test_testcase_result_saved(server):
     url, hub, run_dir = server
     state = json.loads(get(url, '/api/state'))
-    assert len(state['testcases']) >= 20
-    post(url, '/api/testcase', {'id': 'D-03', 'result': 'pass', 'note': '3바퀴 완주'})
+    assert len(state['testcases']) >= 15
+    post(url, '/api/testcase', {'id': 'C-03', 'result': 'pass', 'note': '직접 확인'})
     saved = json.loads((run_dir / 'testcase_results.json').read_text(encoding='utf-8'))
-    assert saved['D-03']['result'] == 'pass' and saved['D-03']['note'] == '3바퀴 완주'
+    assert saved['C-03']['result'] == 'pass' and saved['C-03']['note'] == '직접 확인'
+
+
+def test_testcases_judged_automatically_from_reports(server):
+    url, hub, run_dir = server
+    def rep(robot, state, events=()):
+        post(url, '/api/report', {'robot': robot, 'state': state, 'events': list(events), 'want': [], 'release': []})
+    rep('pinky1', {'state': 'idle', 'fps': 15.0, 'battery': 7.4, 'role': 1})
+    rep('pinky2', {'state': 'idle', 'fps': 14.8, 'battery': 7.3, 'role': 2})
+    rep('pinky1', {'state': 'sign_approach', 'fps': 15.0, 'battery': 7.4, 'role': 1}, ['oncoming flag up'])
+    rep('pinky2', {'state': 'park_turn', 'fps': 15.0, 'battery': 7.3, 'role': 2}, ['oncoming -> pocket'])
+    rep('pinky2', {'state': 'wait_exit', 'fps': 15.0, 'battery': 7.3, 'role': 2})
+    rep('pinky1', {'state': 'lane_follow', 'fps': 15.0, 'battery': 7.4, 'role': 1}, ['plan_lane1 done'])
+    rep('pinky2', {'state': 'lane_follow', 'fps': 15.0, 'battery': 7.3, 'role': 2},
+        ['exit pocket (robot passed)', 'sign not found (plan_lane2_exit): [turn:left]'])
+    r = json.loads(get(url, '/api/state'))['results']
+    for cid in ('S-01', 'S-02', 'P-02', 'L1-01', 'L1-02', 'L2-01', 'L2-02', 'L2-03', 'P-04'):
+        assert r[cid]['result'] == 'pass' and r[cid]['note'].startswith('자동'), cid
+    assert r['L2-04']['result'] == 'fail'                          # 탈출 경로에서 표지판을 못 찾음
+    rep('pinky2', {'state': 'lane_follow', 'fps': 15.0, 'battery': 7.3, 'role': 2}, ['plan_lane2_exit done'])
+    r = json.loads(get(url, '/api/state'))['results']
+    assert r['L2-04']['result'] == 'pass' and r['C-04']['result'] == 'pass'   # 다음 시도에서 성공하면 통과로
 
 
 def test_bad_request_does_not_kill_server(server):
