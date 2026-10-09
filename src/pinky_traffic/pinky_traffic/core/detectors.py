@@ -172,8 +172,19 @@ class HsvDetector:
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             full = cv2.inRange(hsv, np.array(lane_lo, np.uint8), np.array(cfg.lane_hsv_hi, np.uint8)) > 0
             wall = np.logical_and.accumulate(full, axis=0)
-            wall = cv2.dilate(wall.astype(np.uint8), np.ones((5, 3), np.uint8)) > 0
-            lane[wall] = 0
+            base = wall.sum(axis=0)                       # 열마다 벽이 끝나는 행 (위에서부터 이어진 흰색의 아래 끝)
+            lane[cv2.dilate(wall.astype(np.uint8), np.ones((5, 3), np.uint8)) > 0] = 0
+            # 벽 바로 밑에 붙여 깐 차선은 벽과 틈 없이 이어져 같이 지워진다 -> 가까운 벽(아래 끝이 ROI 위 경계보다 충분히 아래)의
+            # 밑단 띠를 차선으로 되살린다. 그 자리가 곧 차선의 가장자리다 (2026-10-10 pinky1: 첫 코너 뒤 벽 옆 왼쪽 선이 통째로 지워져 lost)
+            y0 = int((cfg.roi_top + cfg.wall_base_min) * h)
+            band = np.zeros_like(lane)
+            for x in np.flatnonzero((base > y0) & (base < h - 2)):
+                band[base[x] - cfg.wall_base_px:base[x] + 2, x] = 255
+            # 띠와 그 아래 살아남은 차선 조각을 한 줄로 잇는다 (끊기면 조각들이 횡단보도 줄무늬로 분류된다)
+            near = cv2.dilate(band, np.ones((9, 9), np.uint8)) > 0
+            join = np.where(near, lane | band, 0).astype(np.uint8)
+            join = cv2.morphologyEx(join, cv2.MORPH_CLOSE, np.ones((5, 25), np.uint8))
+            lane |= join
         route = self.route_mask(frame)
         self.route_seen = self.route_near = False
         self.route_end_y = 0.0
