@@ -236,7 +236,8 @@ class Config:
     wall_base_min: float = 0.15      # 벽 아래 끝이 ROI 위 경계에서 이만큼 넘게 내려와 있으면 가까운 벽: 밑단 띠를 차선으로 쓴다
     wall_base_px: int = 8            # 그 띠의 두께 (px)
     lane2_start_delay_sec: float = 0.0   # START 를 받은 2차선 로봇이 이만큼 기다렸다 출발 (현장은 field.yaml 에서 3초: 1차선이 먼저 진입하게)
-    robot_mask_conf: float = 0.5     # YOLO 'robot' 이 이 신뢰도 이상이면 그 영역의 파랑은 표지판에서 뺀다
+    yolo_show_conf: float = 0.8      # 대시보드 화면에는 이 신뢰도 이상의 YOLO 인식만 그린다
+    robot_mask_conf: float = 0.8     # YOLO 'robot' 이 이 신뢰도 이상이면 그 영역의 파랑은 표지판에서 뺀다
     robot_mask_pad: float = 0.25     # 로봇 박스를 가로·세로 이 비율만큼 넓혀서 뺀다
     pocket_late_sec: float = 2.0     # 2차선: 직우를 직진으로 지난 뒤 이 시간 안에 1차선 신호가 오면 그 자리에서 우회전해 칸으로
     oncoming_clear_sec: float = 3.0  # 1차선: 경로를 마치고 차선 따라가기로 돌아온 뒤 이만큼 지나면 깃발을 내린다 (칸의 2차선 출발)
