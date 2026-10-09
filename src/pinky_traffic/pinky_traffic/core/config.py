@@ -173,6 +173,7 @@ class Config:
     sign_blue_sec: float = 4.0       # YOLO 가 이보다 오래 못 보면 색만 남아 있어도 도착으로 본다
     crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
     lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다
+    sign_arrive_far_row: float = 0.75   # 좌/우회전 표지판은 먼 끝이 이 행 아래로 오면 도착 (다 사라질 때까지 안 간다)
     sign_wall_sec: float = 1.0       # 표지판 위에서 앞이 이만큼 막혀 있으면 표지판 끝으로 보고 돈다
     lane1_exit_m: float = 0.40       # 1차선: 두 번째 표지판(R2)을 돈 뒤 이만큼 곧장 가고(S 를 지나) 그다음 흰 차선 (현장 요청)
     wall_turn_m: float = 0.20        # 차선 따라가다 정면 벽이 이보다 가까우면 앞 대각선이 더 트인 쪽으로 꺾는다
@@ -293,6 +294,7 @@ TUNABLE = [
     ('sign_advance_m', 0.0, 0.40, 0.01),
     ('sign_turn_deg', 30.0, 150.0, 5.0),
     ('lane1_exit_m', 0.0, 1.0, 0.05),
+    ('sign_arrive_far_row', 0.50, 1.00, 0.05),
     ('sign_align_deg', 0.0, 40.0, 1.0),
     ('zone_advance_m', 0.0, 0.30, 0.01),
     ('side_slow_m', 0.0, 0.30, 0.01),

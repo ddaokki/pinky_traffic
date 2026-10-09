@@ -155,7 +155,7 @@ def sign(kind, x=0.0, far=0.5, near=0.7):
 
 FAR_T, AT_T = sign('turn'), see()            # AT_* = 표지판 위에 올라타 화면에서 사라졌다
 FAR_S, AT_S = sign('straight_right'), see()
-SIGN = dict(sign_align_deg=0.0, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
+SIGN = dict(sign_align_deg=0.0, sign_arrive_far_row=1.01, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
             sign_search_sec=6.0, junction_clear_sec=8.0)
 
 
@@ -799,3 +799,14 @@ def test_nearest_sign_wins_over_centered_far_one():
     assert c._wanted_sign(p)[1] == 0.44
     p = see(signs=[('blue', 0.6, 0.5, 1.0), ('blue', -0.1, 0.5, 0.98)])
     assert c._wanted_sign(p)[1] == -0.1                                  # 둘 다 발밑이면 가운데 쪽
+
+
+def test_turn_sign_arrives_when_far_edge_reaches_bottom():
+    # 2026-10-09 현장: 표지판이 다 사라질 때까지 가면 카메라 사각(앞 10cm) 때문에 한참 지나서 돈다
+    c = started(lane_role=1, **dict(SIGN, sign_arrive_far_row=0.75))
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_T, 1.0, 0.2)
+    c.step(sign('turn', far=0.6, near=1.0), 1.0, 0.3)
+    assert c.state == SIGN_APPROACH
+    c.step(sign('turn', far=0.78, near=1.0), 1.0, 0.4)
+    assert c.state == SIGN_ADVANCE                                        # 먼 끝이 0.75 아래 -> 여기서 도착

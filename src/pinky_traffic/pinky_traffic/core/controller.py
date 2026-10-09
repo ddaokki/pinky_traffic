@@ -715,7 +715,13 @@ class LaneController:
             walled = front_m is not None and front_m < cfg.hold_front_m + 0.01 and self.target is not None \
                 and self.target[3] >= cfg.sign_gone_row
             self.t_walled = (self.t_walled or now) if walled else None
-            if walled and now - self.t_walled >= cfg.sign_wall_sec:
+            short_sign = self.plan_i < len(self.plan) and self.plan[self.plan_i][0] != 'straight_right' and not self.exiting
+            if sign is not None and short_sign and sign[2] >= cfg.sign_arrive_far_row and abs(sign[1]) <= cfg.sign_arrive_x:
+                # 우회전/좌회전 표지판: 먼 끝까지 화면 아래로 내려왔으면(= 거의 발밑) 다 사라지기를 기다리지 않고 여기서 멈춘다.
+                # 카메라가 앞 10cm 를 못 봐서, 다 사라질 때까지 가면 표지판을 한참 지나 돈다 (2026-10-09 현장: 너무 가서 돈다)
+                self.events.append((now, f'sign end: far edge {sign[2]:.2f}'))
+                arrived = True
+            elif walled and now - self.t_walled >= cfg.sign_wall_sec:
                 self.events.append((now, f'sign end: wall {front_m:.2f}m'))
                 sign, arrived = None, True
             elif sign is None:
