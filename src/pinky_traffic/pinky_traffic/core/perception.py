@@ -195,7 +195,15 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
         # 차선: 화면 옆 가장자리에 닿거나, 키가 크면서 먼 곳(ROI 위쪽)까지 이어진다.
         # 횡단보도 줄무늬: 가까이 오면 키는 커지지만 먼 곳까지 이어지지는 않는다.
         reaches_far = bh >= cfg.lane_min_height * h and y <= (cfg.roi_top + 0.10) * h
-        if separate_crosswalk and not reaches_far and not touches_side:
+        # 발밑(화면 아래 끝)에서부터 길게 올라오는 덩어리는 차선이다. 코너에서 꺾여 들어가는 선은 멀리까지 안 이어져도 그렇다
+        # (2026-10-09 pinky1: 코너 앞에서 왼쪽 선이 짧게 보여 줄무늬로 분류 -> 오른쪽 선만으로 달림). 횡단보도 줄무늬는 멀리서 다가오므로
+        # 정지 전에는 발밑에 닿지 않는다
+        from_bottom = y + bh >= h - 2 and bh >= cfg.lane_bottom_height * h
+        if from_bottom:                                  # 줄무늬는 차선 안쪽(화면 가운데)에 있다. 선은 발밑에서 화면 양 옆쪽에 닿는다
+            foot = np.flatnonzero(comp[h - 1])
+            foot_x = foot.mean() / w if foot.size else 0.5
+            from_bottom = foot_x < cfg.lane_bottom_side or foot_x > 1.0 - cfg.lane_bottom_side
+        if separate_crosswalk and not reaches_far and not touches_side and not from_bottom:
             stripes[comp] = 255
             stripe_boxes.append((x, y, bw, bh))
             continue

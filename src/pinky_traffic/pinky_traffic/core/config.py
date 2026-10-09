@@ -35,6 +35,8 @@ class Config:
     lane_width_far: float = 0.45    # far_row 에서 차선폭 / 영상폭
     min_area: float = 0.0015        # 덩어리 최소 면적 / 영상 면적
     lane_min_height: float = 0.16   # 차선으로 볼 덩어리의 최소 높이 / 영상 높이 (같은 색 모드)
+    lane_bottom_height: float = 0.25  # 화면 아래 끝에 닿고 이만큼 길면 멀리까지 안 이어져도 차선 (코너에서 꺾이는 선)
+    lane_bottom_side: float = 0.30  # ... 단 발밑 위치가 화면 양 옆 이 비율 안일 때만 (가운데는 횡단보도 줄무늬일 수 있다)
     crosswalk_min_stripes: int = 3  # 같은 색 모드: 줄무늬가 이 개수 이상이면 횡단보도
     crosswalk_min_area: float = 0.004
     crosswalk_stop_row: float = 0.80  # 횡단보도 아래 끝이 이 행까지 내려오면 정지
