@@ -118,6 +118,11 @@ class HsvDetector:
         seeded = np.setdiff1d(seeded[seeded > 0], np.unique(labels[0]))
         seeded = [i for i in seeded if np.count_nonzero(strong[labels == i]) >=
                   max(8, 0.015 * np.count_nonzero(labels == i))]
+        # 로봇 바퀴는 청록색(색상 약 95), 표지판 테이프는 파랑(101~109). 덩어리의 색상 가운뎃값이 sign_hue_min 보다 낮으면 바퀴다
+        # (2026-10-10: 상대 로봇의 바퀴를 표지판으로 보고 다가감. YOLO 로봇 인식에만 기대면 놓친 프레임에서 다시 잡힌다)
+        if cfg.sign_hue_min > 0:
+            hue = hsv[..., 0]
+            seeded = [i for i in seeded if np.median(hue[labels == i]) >= cfg.sign_hue_min]
         mask = np.where(np.isin(labels, seeded), 255, 0).astype(np.uint8)
         mask[:int(cfg.roi_top * frame.shape[0])] = 0
         if self.not_sign is not None and self.not_sign.shape == mask.shape:
