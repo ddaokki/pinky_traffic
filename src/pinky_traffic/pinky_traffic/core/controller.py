@@ -154,6 +154,7 @@ class LaneController:
         self.t_walled = None                # 표지판 위에서 앞이 막힌 시각
         self.exit_run = 0.0                 # 1차선: R2 뒤 곧장 간 거리
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
+        self.align_off = False              # 정면 맞추기를 건너뛰었다 (그래도 표지판 쪽으로는 간다)
         self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
         self.at_sign = False                # 표지판 위에 도착했다 (기다리는 중에 표지판이 다시 보여도 다시 다가가지 않는다)
         self.plan_name = ''
@@ -242,6 +243,7 @@ class LaneController:
     def _approach(self, sign, now, why):
         self.after_turn = self.state == SIGN_SEARCH          # 돈 뒤 다음 표지판: 먼저 제자리에서 정면으로 맞춘다
         self.target, self.t_target, self.t_align, self.aligned, self.at_sign = sign, now, None, False, False
+        self.align_off = False
         self.t_yolo = now
         self.pid.reset()
         self._go(SIGN_APPROACH, now, f'{sign[0]} ({why})')
@@ -307,7 +309,7 @@ class LaneController:
             self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
             self.events.append((now, 'square up to sign'))
         if now - self.t_align > cfg.sign_align_sec:
-            self.aligned = True
+            self.align_off = True
             self.events.append((now, 'align timeout'))
             return None
         # 돌면서 찍힌 화면은 흔들려 믿을 수 없다: 조금 돌고 -> 멈춰서 화면이 가라앉은 뒤 다시 잰다 (현장 요청)
@@ -324,8 +326,10 @@ class LaneController:
             return Command(0.0, w, SIGN_APPROACH, why)
         turn_to = lambda x: -cfg.sign_align_w if x > 0 else cfg.sign_align_w
         def skip(why):
-            # 후진은 하지 않는다 (2026-10-09 1차선: S 가 발밑에 있어 '너무 가깝다'며 계속 후진) -> 맞추기를 그만두고 예전처럼 간다
-            self.aligned = True
+            # 후진은 하지 않는다 (2026-10-09 1차선: S 가 발밑에 있어 '너무 가깝다'며 계속 후진) -> 맞추기를 그만두고 예전처럼 간다.
+            # 'aligned'(맞췄으니 곧장)가 아니라 그냥 맞추기만 끈다: 표지판 쪽으로 계속 간다
+            # (2026-10-09 pinky2: 건너뛴 뒤 곧장만 가서 오른쪽의 직우를 왼쪽으로 지나치고 옆 차선 표지판으로)
+            self.align_off = True
             self.events.append((now, f'align skipped ({why})'))
             return None
         if sign is None:
@@ -699,7 +703,7 @@ class LaneController:
                     self.settle_until = self.pulse_until + cfg.sign_settle_sec
                     return Command(0.0, self.pulse_w, SIGN_APPROACH, 'face sign')
                 self.after_turn = False
-            if self._align_kind() and not self.aligned:
+            if self._align_kind() and not self.aligned and not self.align_off:
                 cmd = self._square_up(sign, p, now, dt)
                 if cmd is not None:
                     return cmd

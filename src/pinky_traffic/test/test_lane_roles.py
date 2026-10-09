@@ -771,3 +771,14 @@ def test_wall_straight_ahead_turns_to_open_side():
     c.step(see(), 1.0, 0.1)
     cmd = c.step(see(), 0.16, 0.2, diag=(0.6, 0.25))
     assert cmd.w > 0.3                                                   # 왼쪽이 트였다 -> 왼쪽으로
+
+
+def test_after_align_skip_still_steers_to_sign():
+    # 2026-10-09 pinky2: 정면 맞추기를 건너뛴 뒤 곧장만 가서 오른쪽의 직우를 왼쪽으로 지나치고 옆 차선 표지판으로 감
+    c = started(lane_role=2, **dict(SIGN, sign_align_deg=8.0))
+    c.step(see(), 1.0, 0.1)
+    c.step(sign('straight_right', x=0.3, far=0.8, near=1.0), 1.0, 0.2)   # 처음부터 너무 가깝다 -> 맞추기 건너뜀
+    cmd = c.step(sign('straight_right', x=0.3, far=0.8, near=1.0), 1.0, 0.25)
+    assert c.align_off and not c.aligned
+    cmd = c.step(sign('straight_right', x=0.4, far=0.8, near=1.0), 1.0, 0.3)
+    assert cmd.v > 0 and cmd.w < 0                                       # 그래도 오른쪽의 표지판 쪽으로 꺾는다
