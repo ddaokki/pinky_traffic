@@ -217,6 +217,8 @@ class Config:
     wall_blob_h: float = 0.30        # 흰 덩어리가 이만큼 키가 크고 (횡단보도 줄무늬 0.24~0.28)
     wall_blob_area: float = 0.05     # 영상의 이 비율보다 넓고 (줄무늬 0.03, 가벽 0.06~0.22)
     wall_blob_fill: float = 0.45     # 자기 상자를 이만큼 채우면 벽의 면 (비스듬한 차선 테이프는 0.3 아래)
+    wall_from_top: bool = True       # 화면 맨 위부터 이어져 내려오는 흰색(벽 면)은 차선에서 뺀다
+    lane_wall_band: float = 0.18     # 그 아래 이만큼(영상 높이 비율) 안에서도 lane_wall_base 보다 넓게 흰 행은 벽 밑단으로 지운다
     lane_wall_base: float = 0.50     # ROI 위 경계 바로 아래 행이 이 폭보다 넓게 희면 벽 밑단으로 보고 지운다
     # 흰 벽이 화면을 채우면 카메라가 어둡게 찍어 테이프 밝기(V)가 170 아래로 떨어진다 (현장 146).
     # 바닥(화면 아래쪽) 밝기 중앙값 + lane_v_margin 까지 V 하한을 내린다. lane_hsv_lo 의 V 보다 올리지는 않는다.

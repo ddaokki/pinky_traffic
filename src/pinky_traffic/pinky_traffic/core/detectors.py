@@ -142,6 +142,14 @@ class HsvDetector:
         if cfg.lane_local_margin > 0:
             lane |= self.local_bright_mask(frame)
         lane = remove_wall_base(lane, cfg)
+        if cfg.wall_from_top:
+            # 화면 맨 위에서부터 끊기지 않고 내려오는 흰색 = 벽 (바닥 테이프는 화면 위쪽까지 못 올라간다). 벽 밑에 붙은 차선까지
+            # 한 덩어리로 묶이지 않게 그 부분을 지운다 (2026-10-09 pinky1: 가벽 면이 왼쪽 선과 붙어 왼쪽 선으로 보이고 2차선으로 들어감)
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            full = cv2.inRange(hsv, np.array(lane_lo, np.uint8), np.array(cfg.lane_hsv_hi, np.uint8)) > 0
+            wall = np.logical_and.accumulate(full, axis=0)
+            wall = cv2.dilate(wall.astype(np.uint8), np.ones((5, 3), np.uint8)) > 0
+            lane[wall] = 0
         route = self.route_mask(frame)
         self.route_seen = self.route_near = False
         self.route_end_y = 0.0

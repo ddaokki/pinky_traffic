@@ -265,6 +265,11 @@ def remove_wall_base(mask, cfg):
     while y < h and np.count_nonzero(mask[y]) > cfg.lane_wall_base * w:
         mask[y] = 0
         y += 1
+    # 벽 밑단이 ROI 위 경계에서 조금 내려와 시작해도 지운다: 위쪽 띠(lane_wall_band) 안에서 영상 폭의 lane_wall_base 보다
+    # 넓게 흰 행 (2026-10-09 pinky1: 횡단보도 뒤 왼쪽 가벽 밑면을 왼쪽 선으로 보고 오른쪽 2차선으로 들어감)
+    band = slice(int(cfg.roi_top * h), min(h, int((cfg.roi_top + cfg.lane_wall_band) * h)))
+    wide = np.count_nonzero(mask[band], axis=1) > cfg.lane_wall_base * w
+    mask[band][wide] = 0
     return mask
 
 
