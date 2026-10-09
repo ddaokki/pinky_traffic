@@ -473,7 +473,9 @@ class LaneController:
             if not self.cleared:
                 # 마지막 회전 직후에는 흰 선 하나만 화면 오른쪽에 보인다. 자동 분류에 맡기면
                 # 그 선을 왼쪽 경계로 오인해 벽 쪽으로 꺾으므로 구간을 벗어날 때까지 오른쪽 경계로 고정한다.
-                if self.plan_name in ('plan_lane1', 'plan_lane2', 'plan_lane2_exit'):
+                # 2차선은 하지 않는다 (2026-10-10 pinky2: 마지막 좌회전 뒤 왼쪽 선만 보이는데 오른쪽 선을 찾겠다고
+                # 제자리에서 200도 돌아 뒤집힘)
+                if self.plan_name == 'plan_lane1':
                     self.prefer = 'right'
                 self._clear_step(now)
                 if self.cleared:

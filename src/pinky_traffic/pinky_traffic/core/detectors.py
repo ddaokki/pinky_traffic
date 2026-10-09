@@ -246,7 +246,8 @@ class HsvDetector:
             # 초록 선 가운데를 향해 간다
             p = Perception(size=(frame.shape[1], frame.shape[0]), ok=True, offset=float(np.clip(self.zone_x, -1.5, 1.5)))
             p.target = (int((self.zone_x + 1) * frame.shape[1] / 2), int(self.zone_y * (frame.shape[0] - 1)))
-        elif self.prefer:
+        elif self.prefer and cv2.countNonZero(masks[self.prefer]) >= self.cfg.min_area * frame.shape[0] * frame.shape[1]:
+            # (따라갈 쪽 선이 안 보이면 이 모드를 쓰지 않고 보이는 선으로 간다: 없는 선을 찾겠다고 제자리에서 돌지 않게)
             # 갈림길: 한쪽 선만 보고 (기억해 둔 차선 폭의 절반만큼 떨어져) 따라간다
             keep = masks[self.prefer]
             masks = {'left': keep if self.prefer == 'left' else None,

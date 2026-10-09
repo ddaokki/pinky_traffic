@@ -243,7 +243,7 @@ def test_lane2_without_oncoming_goes_straight_then_left_left():
     t += 0.1
     cmd, t = through(c, AT_T, FAR_T, t + 0.1, 'left')
     cmd, t = through(c, AT_T, FAR_T, t, 'left')
-    assert c.plan_done and cmd.state == LANE_FOLLOW and c.prefer == 'right'
+    assert c.plan_done and cmd.state == LANE_FOLLOW
 
 
 def test_sign_not_found_stops_with_route_preserved():
@@ -315,7 +315,7 @@ def test_lane2_pocket_then_exit_right_left_left():
     cmd, _ = through(c, AT_S, FAR_S, clock.t, 'right', clock, True)       # 입구의 직우 가지에서 우회전
     cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
     cmd, _ = through(c, AT_T, FAR_T, clock.t, 'left', clock, True)
-    assert c.plan_done and cmd.state == LANE_FOLLOW and c.prefer == 'right'
+    assert c.plan_done and cmd.state == LANE_FOLLOW
 
 
 def test_lane2_exits_when_flag_goes_down():
