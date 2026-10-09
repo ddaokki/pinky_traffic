@@ -729,7 +729,8 @@ class LaneController:
                     return Command(0.0, -cfg.sign_align_w if self.target[1] > 0 else cfg.sign_align_w, SIGN_APPROACH, 'find sign')
                 # YOLO 가 잠깐 놓쳐도 색으로 본 파랑이 아직 발 앞에 있으면 표지판 위가 아니다 (긴 직우의 오른쪽 화살표까지 지나가야 도착)
                 # (2026-10-09 pinky2: 직우 긴 막대 위에서 YOLO 가 0.3초 놓치자 '도착'으로 보고 오른쪽 화살표 한참 앞에서 우회전)
-                if now - self.t_yolo < cfg.sign_blue_sec and any(len(a) > 3 and a[3] >= cfg.sign_blue_row and abs(a[0] - self.target[1]) <= cfg.sign_blue_dx
+                long_sign = self.plan_i < len(self.plan) and self.plan[self.plan_i][0] == 'straight_right'
+                if long_sign and now - self.t_yolo < cfg.sign_blue_sec and any(len(a) > 3 and a[3] >= cfg.sign_blue_row and abs(a[0] - self.target[1]) <= cfg.sign_blue_dx
                        for a in p.sign_angles):
                     self.t_target = now
                     return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'blue ahead')

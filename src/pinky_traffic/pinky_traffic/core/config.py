@@ -168,8 +168,8 @@ class Config:
     sign_center_row: float = 0.65    # 표지판 가까운 끝이 이 행 아래로 오면 차선 대신 표지판 가운데를 보고 간다 (위에 올라타게)
     sign_arrive_x: float = 0.5       # 표지판이 이보다 옆에서 사라지면 '도착'이 아니라 옆을 지나친 것 -> 그쪽으로 돌아 다시 찾는다
     sign_find_sec: float = 3.0       # 그렇게 다시 찾는 시간 (넘으면 도착으로 본다)
-    sign_blue_row: float = 0.45      # 다가가다 YOLO 가 놓쳐도 이 행 아래에 파랑(색)이 남아 있으면 아직 도착이 아니다
-    sign_blue_dx: float = 0.7        # 쫓던 표지판과 가로로 이만큼 안의 파랑만
+    sign_blue_row: float = 0.80      # 다가가다 YOLO 가 놓쳐도 이 행 아래에 파랑(색)이 남아 있으면 아직 도착이 아니다
+    sign_blue_dx: float = 0.35       # 쫓던 표지판과 가로로 이만큼 안의 파랑만
     sign_blue_sec: float = 4.0       # YOLO 가 이보다 오래 못 보면 색만 남아 있어도 도착으로 본다
     crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
     lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다

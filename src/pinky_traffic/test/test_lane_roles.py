@@ -669,16 +669,22 @@ def test_square_up_reacquires_sign_that_jumped_to_other_side():
 
 def test_not_arrived_while_blue_still_ahead():
     # 2026-10-09 pinky2: 직우 긴 막대 위에서 YOLO 가 0.3초 놓치자 '도착'으로 보고 오른쪽 화살표 한참 앞에서 우회전
-    c = started(lane_role=1, **SIGN)
+    c = started(lane_role=2, **SIGN)
     c.step(see(), 1.0, 0.1)
-    c.step(FAR_T, 1.0, 0.2)
-    c.step(sign('turn', far=0.4, near=1.0), 1.0, 0.3)
-    shaft = see(sign_angles=[(0.1, 0.0, 0.4, 1.0)])                       # YOLO 는 놓쳤지만 색으로는 파랑이 발 앞에 있다
+    c.step(FAR_S, 1.0, 0.2)
+    c.step(sign('straight_right', far=0.4, near=1.0), 1.0, 0.3)
+    shaft = see(sign_angles=[(0.1, 0.0, 0.4, 1.0)])                       # YOLO 는 놓쳤지만 색으로는 파랑이 발밑에 있다
     cmd, t = run(c, shaft, 0.3, 1.5)
     assert c.state == SIGN_APPROACH and cmd.v > 0 and cmd.reason == 'blue ahead'
     run(c, see(), 1.5, 2.0)
-    assert c.state == SIGN_ADVANCE                                        # 파랑이 다 지나가면 도착
-
+    assert c.state != SIGN_APPROACH                                       # 파랑이 다 지나가면 도착
+    # 우회전 표지판에서는 이 규칙을 안 쓴다 (2026-10-09: 앞쪽 다른 표지판 파랑 때문에 벽 앞까지 감)
+    c1 = started(lane_role=1, **SIGN)
+    c1.step(see(), 1.0, 0.1)
+    c1.step(FAR_T, 1.0, 0.2)
+    c1.step(sign('turn', far=0.85, near=1.0), 1.0, 0.3)
+    run(c1, shaft, 0.3, 0.8)
+    assert c1.state == SIGN_ADVANCE
 
 def test_lost_robot_still_goes_to_sign_in_front():
     # 2026-10-09 pinky2: 차선이 가벽·직우 표지판에 가려 LOST 가 된 채 표지판을 바로 앞에 두고 15초 멈춤
