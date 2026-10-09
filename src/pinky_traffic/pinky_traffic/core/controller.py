@@ -152,6 +152,7 @@ class LaneController:
         self.t_yolo = 0.0                   # 쫓던 표지판을 마지막으로 (YOLO 로) 본 시각
         self.after_turn = False             # 돈 뒤 다음 표지판으로 다가가는 중 (먼저 정면 맞추기)
         self.t_walled = None                # 표지판 위에서 앞이 막힌 시각
+        self.exit_run = 0.0                 # 1차선: R2 뒤 곧장 간 거리
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
         self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
         self.at_sign = False                # 표지판 위에 도착했다 (기다리는 중에 표지판이 다시 보여도 다시 다가가지 않는다)
@@ -422,6 +423,16 @@ class LaneController:
                 self._flag(True)
         if self.junction_held and not self.cleared:
             self._junction(True)                      # 하트비트
+        if self.plan_done and cfg.lane_role == 1 and self.plan_name == 'plan_lane1' and self.exit_run < cfg.lane1_exit_m:
+            # R2 를 돈 뒤 정해진 거리만큼 곧장 (S 표지판·칸 입구 선에 흔들리지 않게). 그다음 오른쪽 선만 따라가며 구간을 벗어난다
+            if self.exit_run == 0.0:
+                self.events.append((now, f'straight {cfg.lane1_exit_m:.2f}m after R2'))
+            self.exit_run += cfg.v_min * dt
+            self.t_seen = now
+            if self.exit_run >= cfg.lane1_exit_m:
+                self.t_mode = now
+                self.events.append((now, 'straight done -> lanes'))
+            return Command(cfg.v_min, 0.0, self.state, 'straight out')
         if self.plan_done:
             if not self.cleared:
                 # 1차선: S 를 곧장 지난 뒤 구간을 벗어날 때까지 오른쪽 선만 따라간다. 왼쪽은 초록 칸 입구라 흰 선이 그쪽으로 꺾여 있다
@@ -547,7 +558,7 @@ class LaneController:
         self.no_lidar = False
         cmd = self._step(p, front_m, now)
         cmd = self._side_guard(cmd, sides, now)
-        cmd = self._wall_avoid(cmd, diag)
+        cmd = self._wall_avoid(cmd, diag, front_m)
         return self._safety_hold(cmd, front_m, sides, now)
 
     def _safety_hold(self, cmd, front_m, sides, now):
@@ -572,7 +583,7 @@ class LaneController:
         self.held = True
         return Command(0.0, cmd.w, cmd.state, why)
 
-    def _wall_avoid(self, cmd, diag):
+    def _wall_avoid(self, cmd, diag, front_m=None):
         """라이다 앞 대각선(diag = (왼쪽 앞, 오른쪽 앞) 최소 거리)에 벽이 wall_avoid_m 보다 가까우면 반대쪽으로 꺾는다.
         카메라가 흰 가벽을 차선으로 잘못 봐도 벽에 박지 않게 (2026-10-09: 가벽이 차선 가장자리에 서 있어 두 대 모두 벽으로 감).
         제자리 회전 중(v=0)이나 표지판 정면 맞추기 중에는 건드리지 않는다."""
@@ -582,6 +593,11 @@ class LaneController:
         m = cfg.wall_avoid_m
         push = lambda d: 0.0 if d is None else max(0.0, (m - d) / m)
         bias = cfg.wall_avoid_w * (push(diag[1]) - push(diag[0]))       # 오른쪽이 가까우면 + (왼쪽으로)
+        if front_m is not None and front_m < cfg.wall_turn_m and cmd.state in (LANE_FOLLOW, CROSSING):
+            # 정면이 벽: 앞 대각선이 더 트인 쪽으로 (2026-10-09 pinky2: 횡단보도 뒤 왼쪽으로 꺾이는 곳에서 정면 가벽으로 감)
+            left, right = (9.0 if d is None else d for d in diag)
+            near = (cfg.wall_turn_m - front_m) / max(0.01, cfg.wall_turn_m - cfg.obstacle_stop_m)
+            bias += cfg.wall_avoid_w * (1.0 if left > right else -1.0) * min(1.0, 0.5 + near)
         if bias == 0.0:
             return cmd
         w = max(-cfg.w_max, min(cfg.w_max, cmd.w + bias))

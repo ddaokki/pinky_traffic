@@ -127,7 +127,7 @@ class Config:
     # 2026-10-07 표지판 맵: 파란 선 대신 바닥의 파란 양방향 표지판 두 종류를 보고 그 자리에서 돈다.
     #   turn = 우회전 양방향(꺾인 화살표, 오는 방향에 따라 우회전/좌회전), straight_right = 직우 양방향(긴 ←→ 에 칸 쪽 가지)
     # 경로 = "표지판종류:행동" 을 만나는 순서대로 쉼표로. 행동 right|left|straight. 다 지나면 흰 차선을 따라간다.
-    plan_lane1: str = 'turn:right, turn:right:0.12, straight_right:straight'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진. 세 번째 칸 = 그 표지판만의 sign_advance_m
+    plan_lane1: str = 'turn:right, turn:right:0.12'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진. 세 번째 칸 = 그 표지판만의 sign_advance_m
     plan_lane2: str = 'straight_right:straight, turn:left, turn:left'      # 2차선, 상대가 안 온다: S 직진 -> 좌 -> 좌 (=유턴, 1차선으로)
     plan_lane2_pocket: str = 'straight_right:right:0.03'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
     plan_lane2_exit: str = 'any:right, turn:left, turn:left'               # 칸에서 나와: 입구의 표지판(직우 가지)에서 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
@@ -174,6 +174,8 @@ class Config:
     crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
     lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다
     sign_wall_sec: float = 1.0       # 표지판 위에서 앞이 이만큼 막혀 있으면 표지판 끝으로 보고 돈다
+    lane1_exit_m: float = 0.40       # 1차선: 두 번째 표지판(R2)을 돈 뒤 이만큼 곧장 가고(S 를 지나) 그다음 흰 차선 (현장 요청)
+    wall_turn_m: float = 0.20        # 차선 따라가다 정면 벽이 이보다 가까우면 앞 대각선이 더 트인 쪽으로 꺾는다
     wall_avoid_m: float = 0.15       # 앞 대각선(wall_avoid_from~to 도)에 벽이 이보다 가까우면 반대쪽으로 꺾는다 (0 = 끔)
     wall_avoid_w: float = 1.0        # 아주 붙었을 때 더하는 회전 속도 rad/s
     wall_avoid_from: float = 15.0
@@ -290,6 +292,7 @@ TUNABLE = [
     ('sign_gone_row', 0.50, 1.00, 0.02),
     ('sign_advance_m', 0.0, 0.40, 0.01),
     ('sign_turn_deg', 30.0, 150.0, 5.0),
+    ('lane1_exit_m', 0.0, 1.0, 0.05),
     ('sign_align_deg', 0.0, 40.0, 1.0),
     ('zone_advance_m', 0.0, 0.30, 0.01),
     ('side_slow_m', 0.0, 0.30, 0.01),

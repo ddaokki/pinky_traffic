@@ -155,7 +155,7 @@ def sign(kind, x=0.0, far=0.5, near=0.7):
 
 FAR_T, AT_T = sign('turn'), see()            # AT_* = 표지판 위에 올라타 화면에서 사라졌다
 FAR_S, AT_S = sign('straight_right'), see()
-SIGN = dict(sign_align_deg=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
+SIGN = dict(sign_align_deg=0.0, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
             sign_search_sec=6.0, junction_clear_sec=8.0)
 
 
@@ -251,7 +251,7 @@ def test_sign_not_found_gives_up_route():
     assert c.plan_done and c.state == LANE_FOLLOW                         # 6초 안에 못 찾으면 흰 차선으로
 
 
-POCKET = dict(SIGN, plan_lane2_pocket='straight_right:right', use_coordinator=True, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35,
+POCKET = dict(SIGN, plan_lane1='turn:right, turn:right, straight_right:straight', lane1_exit_m=0.0, plan_lane2_pocket='straight_right:right', use_coordinator=True, park_line_row=0.80, exit_wait_sec=2.0, pass_clear_sec=1.5, pass_front_m=0.35,
               pocket_decide_sec=1.0)
 
 
@@ -494,7 +494,7 @@ def test_sign_turn_starts_with_full_stop():
 def test_plan_step_can_have_its_own_advance():
     plan, adv = parse_plan('turn:right, turn:right:0.12, straight_right', True)
     assert plan == [('turn', 'right'), ('turn', 'right'), ('straight_right', 'straight')] and adv == [None, 0.12, None]
-    c = started(lane_role=1, **dict(SIGN, sign_advance_m=0.07))
+    c = started(lane_role=1, **dict(SIGN, sign_advance_m=0.07, plan_lane1='turn:right, turn:right:0.12'))
     c.step(see(), 1.0, 0.1)
     c.step(FAR_T, 1.0, 0.2)
     c.step(sign('turn', far=0.85, near=1.0), 1.0, 0.3)
@@ -751,3 +751,23 @@ def test_lidar_wall_on_front_right_steers_left():
     cmd = c.step(see(), 1.0, 0.3, diag=(0.07, 0.6))
     assert cmd.w < -0.3
     assert abs(c.step(see(), 1.0, 0.4, diag=(0.5, 0.5)).w) < 0.05
+
+
+
+def test_lane1_goes_straight_after_r2_then_lanes():
+    # 현장 요청: 두 번째 표지판(R2)을 지나면 정해진 거리 곧장 간 뒤 차선 (S 표지판 판단에 기대지 않는다)
+    c = started(lane_role=1, **dict(SIGN, plan_lane1='turn:right, turn:right', lane1_exit_m=0.20))
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
+    cmd, t = through(c, AT_T, FAR_T, t, 'right')
+    cmd, t = run(c, see(offset=0.8), t, t + 3.0)
+    assert c.plan_done and cmd.reason == 'straight out' and cmd.w == 0   # 0.2m / 0.04 = 5초 동안 차선 무시하고 곧장
+    cmd, t = run(c, see(offset=0.8), t, t + 2.5)
+    assert cmd.reason != 'straight out' and cmd.w < 0 and c.prefer == 'right'   # 그다음 오른쪽 선 따라
+
+
+def test_wall_straight_ahead_turns_to_open_side():
+    c = started(obstacle_stop_m=0.10)
+    c.step(see(), 1.0, 0.1)
+    cmd = c.step(see(), 0.16, 0.2, diag=(0.6, 0.25))
+    assert cmd.w > 0.3                                                   # 왼쪽이 트였다 -> 왼쪽으로
