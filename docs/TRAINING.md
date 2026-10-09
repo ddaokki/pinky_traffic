@@ -54,21 +54,19 @@ python3 -m pinky_traffic.tools.train --data data/lane_ds/data.yaml --epochs 60
 
 ```bash
 python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pinky_traffic/config/field.yaml \
-    --compare models/best.pt --save out/cmp
+    --weights models/best.pt --save out/eval
 ```
 
-사진별 결과가 필요하면 `--csv out/cmp.csv` 를 붙인다 (어느 사진에서 차선을 놓쳤는지, 횡단보도를 잡았는지 한 줄씩).
+사진별 결과가 필요하면 `--csv out/eval.csv` 를 붙인다 (어느 사진에서 차선을 놓쳤는지, 횡단보도를 잡았는지 한 줄씩).
 
 | 볼 것 | 기준 |
 |---|---|
 | 학습 로그 mask mAP50 | 0.9 이상 |
-| `lane_ok_%` (yolo) | 95 이상 |
-| `mean_abs_offset_diff` (hsv 와 yolo 의 목표점 차이) | 0.05 이하 |
-| `crosswalk_agree_%` | 95 이상 |
+| `lane_ok_%` | 95 이상 |
 | `mean_ms` | 70ms 이하 (15fps 를 따라가려면) |
-| `out/cmp/yolo/*.jpg` 눈으로 | 좌우 색이 바뀐 그림이 없을 것 |
+| `out/eval/*.jpg` 눈으로 | 표지판·로봇이 맞게 칠해졌을 것 |
 
-그다음 시뮬레이터가 아니라 실제로: `scripts/drive.sh pinky1 24 yolo`, 대시보드에서 `conf` 를 0.3~0.5 사이로 조정.
+그다음 실제로: `scripts/drive.sh pinky1 24`, 대시보드에서 `conf` 를 0.3~0.5 사이로 조정.
 
 ## 5. 더 잘 잡히게 (수업 Appendix 5 의 6-5 와 같은 순서)
 
@@ -97,5 +95,4 @@ Roboflow 에서 6번째 클래스 `robot` 을 추가해 Pinky 를 라벨링하�
 ```bash
 python3 -m pinky_traffic.tools.make_synth_dataset --out data/synth_ds --n 600 --tracks 12
 python3 -m pinky_traffic.tools.train --data data/synth_ds/data.yaml --epochs 30 --name synth --out models/synth_best.pt
-python3 -m pinky_traffic.tools.run_sim --backend yolo --weights models/synth_best.pt
 ```

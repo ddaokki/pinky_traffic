@@ -77,7 +77,7 @@ class Simulation:
             x, y, yaw = self.track.pose_at(starts[i])
             self.robots.append(SimRobot(name, x, y, yaw))
             self.cfgs.append(c)
-            self.detectors.append(make_detector(c))
+            self.detectors.append(make_detector(c, model=False))   # 그림 코스라 YOLO 는 안 쓴다 (색만)
             self.controllers.append(LaneController(c, LocalLock(self.manager, name), name))
         self.log = {r.name: [] for r in self.robots}
         self.frames = {}

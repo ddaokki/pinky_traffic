@@ -1,9 +1,9 @@
-"""차선/횡단보도 검출기 두 종류. 둘 다 detect(frame_bgr) -> (Perception, masks dict).
+"""인식기. detect(frame_bgr) -> (Perception, masks dict, frame).
 
-HsvDetector  : 색(inRange)으로 찾는다. 학습 없이 바로 되고, 자동 라벨링에도 쓴다.
-YoloDetector : 학습한 YOLO-seg (best.pt). 클래스 left / right / crosswalk (+ turn, straight_right, robot 선택).
-               초록 칸 끝 선은 색으로 찾고, 표지판 클래스가 없는 모델이면 파란 표지판도 색으로 찾는다.
+HybridDetector : 주행용. 차선·횡단보도·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO-seg (best.pt).
+HsvDetector    : 그 색 부분. 시뮬레이터·테스트·자동 라벨링에서 혼자 쓴다.
 """
+import math
 import time
 
 import cv2
@@ -11,6 +11,35 @@ import numpy as np
 
 from .perception import (LaneMemory, Perception, lane_from_masks, split_lane_mask, stripes_are_crosswalk, resize_to,
                          remove_wall_base, route_end_bar, SIGNS)
+
+
+def shaft_angle(ys, xs, h, w, horizon_row):
+    """파란 덩어리의 긴 축이 '로봇 정면 방향' 에서 몇 도 틀어져 보이는가 (화면 각도, + = 축이 오른쪽으로 기울었다 = 오른쪽으로 돌아야 한다).
+    바닥에서 로봇과 나란한 선은 화면에서 소실점(가운데, horizon_row)을 향한다. 그 방향과 축의 차이."""
+    if len(xs) < 20:
+        return None
+    vx, vy, x0, y0 = cv2.fitLine(np.column_stack([xs, ys]).astype(np.float32), cv2.DIST_HUBER, 0, 0.01, 0.01).ravel()
+    if vy > 0:
+        vx, vy = -vx, -vy
+    seen = math.degrees(math.atan2(vx, -vy))
+    ideal = math.degrees(math.atan2(w / 2.0 - x0, max(1.0, y0 - horizon_row * h)))
+    err = seen - ideal
+    return float((err + 90.0) % 180.0 - 90.0)       # 선은 방향이 없다: -90..90
+
+
+def blue_angles(blue, cfg):
+    """파란 덩어리마다 [(x -1..1, 축 각도 오차)] (shaft_angle)."""
+    h, w = blue.shape[:2]
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
+    out = []
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < cfg.sign_min_area * w * h:
+            continue
+        ys, xs = np.nonzero(labels == i)
+        a = shaft_angle(ys, xs, h, w, cfg.sign_horizon_row)
+        if a is not None:
+            out.append((float((xs.mean() - w / 2.0) / (w / 2.0)), a))
+    return out
 
 
 def blue_signs(blue, cfg):
@@ -40,6 +69,7 @@ class HsvDetector:
         self.route_end_y = 0.0
         self.prefer = ''                 # 'left' | 'right' : 제어기가 정한다. 그쪽 선만 보고 따라간다 (갈림길)
         self.signs = []                  # 파란 표지판 (lane_role 일 때)
+        self.angles = []                 # 파란 덩어리 축 각도 [(x, 오차)] (표지판 정렬)
         self.objects = []                # 인식한 물체 [(이름, 신뢰도|None, 마스크)] (발표용 그림)
         self.follow_zone = False         # 제어기가 정한다: 칸 안에서는 초록 선 가운데를 보고 간다
         self.zone_x = 0.0                # 초록 선 가운데의 가로 위치 (-1 왼쪽 .. 1 오른쪽)
@@ -141,11 +171,13 @@ class HsvDetector:
         """lane_role 맵의 색 표시: 파란 표지판, 초록 칸 끝 선."""
         cfg = self.cfg
         h, w = frame.shape[:2]
-        self.signs, self.zone_y, self.objects = [], 0.0, []
+        self.signs, self.zone_y, self.objects, self.angles = [], 0.0, [], []
         if not cfg.lane_role:
             return
         blue = self.blue_mask(frame)
         self.signs = blue_signs(blue, cfg)
+        if cfg.sign_align_deg > 0:
+            self.angles = blue_angles(blue, cfg)
         if self.signs:
             n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
             self.objects = [('sign', None, np.uint8(labels == i) * 255) for i in range(1, n)
@@ -188,6 +220,7 @@ class HsvDetector:
         else:
             p = lane_from_masks(masks['left'], masks['right'], masks['crosswalk'], self.cfg, self.memory, found)
         p.signs = list(self.signs)
+        p.sign_angles = list(self.angles)
         p.zone_seen, p.zone_y = self.zone_y > 0, self.zone_y
         p.route_seen, p.route_near = self.route_seen, bool(self.route_near)
         p.route_end, p.route_end_y = self.route_end_y > 0, self.route_end_y
@@ -199,7 +232,7 @@ def load_yolo(cfg):
     (2026-10-09: 묶지 않으면 한 프로세스가 CPU 350% 를 써서 두 대 모두 영상을 못 따라갔다)."""
     import torch
     torch.set_num_threads(max(1, int(cfg.yolo_threads)))
-    from ultralytics import YOLO   # 여기서만 필요 (hsv 만 쓸 때는 설치 안 해도 된다)
+    from ultralytics import YOLO   # 여기서만 필요 (시뮬레이터·테스트는 설치 안 해도 된다)
     model = YOLO(cfg.weights)
     model.predict(np.zeros((cfg.imgsz, cfg.imgsz, 3), np.uint8), imgsz=cfg.imgsz, verbose=False)  # 워밍업
     torch.set_num_threads(max(1, int(cfg.yolo_threads)))   # ultralytics 가 불러오면서 다시 늘려 놓는다
@@ -237,7 +270,7 @@ def yolo_objects(r, names, h, w, cfg):
 
 
 class HybridDetector(HsvDetector):
-    """backend 'hsv+yolo': 차선·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO.
+    """주행 인식기: 차선·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO.
     YOLO 는 yolo_every 프레임마다 한 번 돌리고 그 사이는 직전 결과를 쓴다 (CPU 를 아낀다)."""
 
     def __init__(self, cfg):
@@ -280,54 +313,7 @@ class HybridDetector(HsvDetector):
         return p, masks, frame
 
 
-class YoloDetector:
-    def __init__(self, cfg):
-        self.cfg = cfg
-        self.memory = LaneMemory()
-        self.model = load_yolo(cfg)
-        self.names = self.model.names            # {0: 'left', ...}
-        self.has_signs = any(name in SIGNS for name in self.names.values())
-        self.marks = HsvDetector(cfg)            # 역할 표시와 갈림길 판단은 색 검출기와 같은 코드를 쓴다
-        self.marks.memory = self.memory
-        self.prefer, self.follow_zone = '', False   # 제어기가 정한다 (HsvDetector 와 같다)
-
-    def detect(self, frame):
-        t0 = time.perf_counter()
-        cfg = self.cfg
-        frame = resize_to(frame, cfg.proc_width)
-        h, w = frame.shape[:2]
-        r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
-        signs, objects, obstacle_y, masks, _ = yolo_objects(r, self.names, h, w, cfg)
-        top = int(cfg.roi_top * h)
-        for name in ('left', 'right', 'lane'):
-            masks[name][:top] = 0
-        if masks['lane'].any():
-            # 'lane' 한 클래스로만 학습한 모델이면 위치로 좌/우를 나눈다
-            left, right, _, _ = split_lane_mask(masks['lane'], cfg, self.memory)
-            masks['left'] |= left
-            masks['right'] |= right
-        robot = masks.pop('robot')
-        del masks['lane']
-        m = self.marks
-        m.prefer, m.follow_zone = self.prefer, self.follow_zone
-        m.role_marks(frame)                      # 초록 선 (+ 파란 표지판을 색으로)
-        if cfg.lane_role and self.has_signs:
-            m.signs = signs                      # 학습한 표지판을 쓴다 (색 대신)
-            self.objects = objects
-        else:
-            self.objects = m.objects + [o for o in objects if o[0] == 'robot']
-        p, masks = m.perceive(frame, masks, None)
-        masks = dict(masks, robot=robot)
-        p.obstacle_y = obstacle_y
-        p.ms = (time.perf_counter() - t0) * 1000
-        return p, masks, frame
-
-
-def make_detector(cfg):
-    if cfg.backend == 'yolo':
-        return YoloDetector(cfg)
-    if cfg.backend == 'hsv+yolo':
-        return HybridDetector(cfg)
-    if cfg.backend == 'hsv':
-        return HsvDetector(cfg)
-    raise ValueError(f"backend 는 'hsv', 'yolo', 'hsv+yolo' 중 하나입니다: {cfg.backend}")
+def make_detector(cfg, model=True):
+    """주행 인식기: 차선은 색, 표지판·로봇은 YOLO (HybridDetector). 가중치가 없으면 켜지지 않는다.
+    model=False 는 로봇 없이 돌리는 시뮬레이터·테스트용 (YOLO 없이 색만: 파란 표지판도 색으로 찾는다)."""
+    return HybridDetector(cfg) if model else HsvDetector(cfg)

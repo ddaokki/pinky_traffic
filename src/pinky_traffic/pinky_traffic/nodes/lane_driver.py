@@ -6,7 +6,7 @@
       lane/debug/compressed (rqt image view 로 확인용)
       lane/state (std_msgs/String, JSON)
 
-  ros2 run pinky_traffic lane_driver --ros-args -p robot:=pinky1 -p config:=<yaml> -p backend:=yolo -p weights:=best.pt
+  ros2 run pinky_traffic lane_driver --ros-args -p robot:=pinky1 -p config:=<yaml> -p weights:=best.pt
 
 안전장치: 영상이 image_timeout 초 넘게 안 오면 0 속도를 낸다. 종료할 때도 0 속도를 낸다.
 """
@@ -74,7 +74,6 @@ class LaneDriverNode(Node):
         super().__init__('lane_driver')
         self.declare_parameter('robot', 'pinky1')
         self.declare_parameter('config', '')
-        self.declare_parameter('backend', '')
         self.declare_parameter('weights', '')
         self.declare_parameter('image_topic', 'camera/image_raw/compressed')
         self.declare_parameter('compressed', True)
@@ -90,7 +89,7 @@ class LaneDriverNode(Node):
         self.declare_parameter('use_led', True)      # 로봇에서 ros2 run pinky_led led_server 가 떠 있어야 켜진다
         get = lambda name: self.get_parameter(name).value
 
-        overrides = {k: get(k) for k in ('backend', 'weights', 'dashboard_url') if get(k)}
+        overrides = {k: get(k) for k in ('weights', 'dashboard_url') if get(k)}
         if get('lane'):
             overrides['lane_role'] = int(get('lane'))
         self.cfg = Config.load(get('config') or None, **overrides)
@@ -127,7 +126,7 @@ class LaneDriverNode(Node):
                 self.led_client = self.create_client(SetLed, 'set_led')
             except ImportError:
                 self.get_logger().warn('pinky_interfaces 가 없어 LED 는 끈다 (source ~/pinky/install/setup.bash)')
-        self.get_logger().info(f"lane_driver: robot={get('robot')} backend={self.cfg.backend} lane_role={self.cfg.lane_role} "
+        self.get_logger().info(f"lane_driver: robot={get('robot')} weights={self.cfg.weights} lane_role={self.cfg.lane_role} "
                                f"image={get('image_topic')} dashboard={self.cfg.dashboard_url if get('use_dashboard') else 'off'}")
 
     def on_battery(self, msg):

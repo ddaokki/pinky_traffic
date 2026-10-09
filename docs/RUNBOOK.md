@@ -21,7 +21,7 @@ Pinky 카메라는 바닥에서 6.5cm 높이, 화각 66도다. 바로 앞 10cm �
 | 코스 | 모서리가 둥근 사각형, 2.4m × 1.6m 정도 | 시뮬 기본 코스와 같다 |
 | 횡단보도 | **직선 구간**, 곡선이 끝나고 50cm 이상 뒤 | 정지 전에 차선을 똑바로 봐야 한다 |
 | 횡단보도 모양 | 진행 방향으로 15cm 짜리 줄 4개를 차선 안에 나란히 | |
-| 횡단보도 색 | 가능하면 차선과 다른 색 | 색으로 찾는 모드(hsv)가 훨씬 안정적. 같은 색이어도 동작은 한다 |
+| 횡단보도 색 | 가능하면 차선과 다른 색 | 횡단보도는 색으로 찾으므로 훨씬 안정적. 같은 색이어도 동작은 한다 |
 | 같은 색(흰색)일 때 | 줄 4개를 **좌우 차선에 붙이지 말고 3~5cm 띄운다**, 줄끼리도 띄운다 | 붙으면 차선과 한 덩어리로 보여 줄무늬(3개 이상)로 못 센다 |
 | 주변 | 트랙 근처에 테이프와 같은 색 물건(흰 종이, 케이블) 치우기 | 오검출 |
 
@@ -61,10 +61,10 @@ python3 -m pinky_traffic.tools.capture --out data/raw      # 로봇을 차선에
 python3 -m pinky_traffic.tools.hsv_tuner --images data/raw # 테이프만 하얗게 남게 → 출력된 두 줄을
 #   src/pinky_traffic/config/field.yaml 의 lane_hsv_lo / lane_hsv_hi 에 붙여 넣기
 python3 -m pinky_traffic.tools.hsv_tuner --images data/raw --key crosswalk   # 횡단보도가 다른 색일 때만
-python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pinky_traffic/config/field.yaml --save out/hsv
+python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pinky_traffic/config/field.yaml --save out/eval
 ```
 
-`lane_ok_%` 가 90 이상이고 `out/hsv` 그림에서 left(파랑)/right(주황)이 맞게 칠해지면 다음으로.
+`lane_ok_%` 가 90 이상이고 `out/eval` 그림에서 left(파랑)/right(주황)이 맞게 칠해지면 다음으로.
 
 ## 4. 1대 주행
 
@@ -72,7 +72,7 @@ python3 -m pinky_traffic.tools.eval_detector --images data/raw --config src/pink
 # 터미널 A
 scripts/dashboard.sh                 # 브라우저 http://localhost:8088
 # 터미널 B
-scripts/drive.sh pinky1 24           # 색(HSV) 으로 먼저
+scripts/drive.sh pinky1 24           # 차선은 색, 표지판·로봇은 YOLO (models/best.pt 필요)
 ```
 
 1. 대시보드에 pinky1 카드와 영상이 뜨는지 본다.
@@ -94,15 +94,11 @@ scripts/drive.sh pinky1 24           # 색(HSV) 으로 먼저
 
 잘 맞은 값은 `config/field.yaml` 에 옮겨 적는다 (슬라이더 값은 서버를 끄면 사라진다).
 
-## 5. YOLO 로 바꾸기
+## 5. YOLO 모델
 
-[TRAINING.md](TRAINING.md) 대로 `models/best.pt` 를 만든 뒤:
-
-```bash
-scripts/drive.sh pinky1 24 yolo
-```
-
-HSV 로 먼저 달리게 해 두면, 그 주행 영상을 그대로 학습 데이터로 쓸 수 있다.
+인식은 한 가지다: 차선·횡단보도·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO.
+`models/best.pt` 가 없으면 주행 노드가 켜지지 않는다. [TRAINING.md](TRAINING.md) 대로 만든다.
+주행할 때 `runs/frames_*` 에 저장되는 화면을 그대로 학습 데이터로 쓸 수 있다.
 
 ## 6. 2대
 
@@ -114,8 +110,8 @@ scripts/robot_install.sh 192.168.0.7
 
 # PC: 터미널 3개
 scripts/dashboard.sh
-scripts/drive.sh pinky1 24 yolo "" 1    # 1차선에 놓은 로봇
-scripts/drive.sh pinky2 23 yolo "" 2    # 2차선에 놓은 로봇
+scripts/drive.sh pinky1 24 "" 1    # 1차선에 놓은 로봇
+scripts/drive.sh pinky2 23 "" 2    # 2차선에 놓은 로봇
 ```
 (`scripts/start_all.sh` 로 한 번에 켜도 된다. 그때는 대시보드의 `1차선` / `2차선` 버튼으로 차선을 정한다.)
 

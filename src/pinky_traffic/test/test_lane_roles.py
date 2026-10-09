@@ -94,7 +94,7 @@ def test_stripes_taken_as_left_line_do_not_shrink_lane_width():
 
 def test_dashboard_lane_button_sets_role_and_stops():
     from pinky_traffic.core.driver import Driver
-    d = Driver(Config(), use_dashboard=False, autostart=True)
+    d = Driver(Config(), use_dashboard=False, autostart=True, model=False)
     d.process(lanes(floor()), 1.0, 0.1)
     assert d.controller.state == LANE_FOLLOW and d.cfg.lane_role == 0
     d.command('lane2')
@@ -479,3 +479,61 @@ def test_sign_turn_starts_with_full_stop():
     assert cmd.v == 0 and cmd.w == 0                                      # 0.5초 동안은 완전히 멈춤
     cmd = c.step(see(), 1.0, t0 + 0.7)
     assert cmd.v == 0 and cmd.w < 0                                       # 그다음 제자리 우회전
+
+
+def test_plan_step_can_have_its_own_advance():
+    plan, adv = parse_plan('turn:right, turn:right:0.12, straight_right', True)
+    assert plan == [('turn', 'right'), ('turn', 'right'), ('straight_right', 'straight')] and adv == [None, 0.12, None]
+    c = started(lane_role=1, **dict(SIGN, sign_advance_m=0.07))
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_T, 1.0, 0.2)
+    c.step(sign('turn', far=0.85, near=1.0), 1.0, 0.3)
+    run(c, see(), 0.3, 0.7)
+    assert c.state == SIGN_ADVANCE and c.advance_m == 0.07               # R1: 기본값
+    c.plan_i = 1
+    c._arrived(1.0)
+    assert c.advance_m == 0.12                                           # R2 (가벽 쪽): 경로에 적은 값
+
+
+def test_lane2_turns_in_place_until_straight_right_sign_looks_straight():
+    # 2026-10-09 pinky2: 코너를 넓게 돌아 직우 표지판에 비스듬히 들어갔다 -> 축이 바로 보일 때까지 제자리에서 돈다
+    c = started(lane_role=2, sign_align_deg=10.0, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_S, 1.0, 0.2)
+    assert c.state == SIGN_APPROACH
+    tilted = see(signs=[('blue', 0.1, 0.5, 0.7)], sign_angles=[(0.1, 30.0), (-0.8, -40.0)])
+    cmd = c.step(tilted, 1.0, 0.3)
+    assert cmd.v == 0 and cmd.w < 0                                      # 축이 오른쪽으로 기울었다 -> 오른쪽으로 돈다
+    cmd = c.step(see(signs=[('blue', 0.1, 0.5, 0.7)], sign_angles=[(0.1, -25.0)]), 1.0, 0.4)
+    assert cmd.v == 0 and cmd.w > 0
+    cmd = c.step(see(signs=[('blue', 0.1, 0.5, 0.7)], sign_angles=[(0.1, 4.0)], offset=0.5), 1.0, 0.5)
+    assert cmd.v > 0 and cmd.w == 0                                      # 맞았다 -> 차선 말고 그 방향으로 곧장
+    c2 = started(lane_role=2, sign_align_deg=10.0, sign_align_sec=1.0, **SIGN)
+    c2.step(see(), 1.0, 0.1)
+    c2.step(FAR_S, 1.0, 0.2)
+    cmd, _ = run(c2, tilted, 0.2, 1.6)
+    assert cmd.v > 0                                                     # 끝내 못 맞추면 그냥 간다
+
+
+def test_shaft_angle_from_blue_mask():
+    from pinky_traffic.core.detectors import blue_angles
+    cfg = Config(sign_horizon_row=0.30)
+    m = np.zeros((H, W), np.uint8)
+    cv2.line(m, (160, 230), (160, 150), 255, 12)                         # 정면 방향 축
+    assert abs(blue_angles(m, cfg)[0][1]) < 3
+    m[:] = 0
+    cv2.line(m, (120, 230), (220, 150), 255, 12)                         # 오른쪽으로 기운 축
+    assert blue_angles(m, cfg)[0][1] > 20
+
+
+def test_lane1_giving_up_keeps_flag_until_clear():
+    # 2026-10-09: 1차선이 R2 를 못 찾고 포기하자마자 깃발을 내려 칸의 2차선이 나와 버렸다
+    clock = Clock()
+    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **POCKET)
+    run_flag(a, clock, see(), 0.1)
+    run_flag(a, clock, FAR_T, 0.2)
+    through(a, AT_T, FAR_T, clock.t, 'right', clock)
+    run_flag(a, clock, see(), clock.t + 6.5)
+    assert a.plan_done and a.state == LANE_FOLLOW and clock.mgr.flags_of_others('b') == ['oncoming']
+    run_flag(a, clock, see(), clock.t + 8.2)
+    assert a.cleared and clock.mgr.flags_of_others('b') == []

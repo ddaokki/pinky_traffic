@@ -26,7 +26,7 @@ Pinky Pro(ROS2 Jazzy, Ubuntu 24.04)가 테이프 차선을 따라 돌고 횡단�
 
 ## 구조
 
-- `src/pinky_traffic/pinky_traffic/core/` config, perception(마스크→offset), detectors(HsvDetector/YoloDetector),
+- `src/pinky_traffic/pinky_traffic/core/` config, perception(마스크→offset), detectors(HybridDetector = 차선 색 + 표지판·로봇 YOLO, HsvDetector = 색 부분/시뮬),
   controller(PID+상태머신), coordinator(LockManager, DashLink), driver(묶음)
 - `nodes/lane_driver.py` PC 에서 실행. 구독 `camera/image_raw/compressed`, `scan` → 발행 `cmd_vel`
 - `nodes/camera_pub.py` 로봇에서 실행 (bringup 은 카메라를 발행하지 않는다)

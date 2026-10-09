@@ -227,7 +227,7 @@ def test_crosswalk_first_seen_under_the_nose_is_ignored():
 
 def test_driver_saves_frames_while_driving(tmp_path):
     from pinky_traffic.core.driver import Driver
-    d = Driver(Config(), use_dashboard=False, autostart=True, record_dir=str(tmp_path / 'frames'))
+    d = Driver(Config(), use_dashboard=False, autostart=True, record_dir=str(tmp_path / 'frames'), model=False)
     for i in range(6):
         d.process(lines(floor(), WHITE), 1.0, 0.1 * i)
     assert len(list((tmp_path / 'frames').glob('*.jpg'))) == 2

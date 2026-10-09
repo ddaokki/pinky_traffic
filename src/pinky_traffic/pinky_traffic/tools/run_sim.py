@@ -4,7 +4,6 @@
   python3 -m pinky_traffic.tools.run_sim --robots 2 --coordinator # 2대 + 횡단보도 락
   python3 -m pinky_traffic.tools.run_sim --headless --seconds 150 --video out.mp4
   python3 -m pinky_traffic.tools.run_sim --dashboard              # 대시보드로 보기/조작 (서버 먼저 실행)
-  python3 -m pinky_traffic.tools.run_sim --backend yolo --weights best.pt
 """
 import argparse
 import json
@@ -38,7 +37,7 @@ def run_with_dashboard(args, cfg, track):
     drivers = []
     for robot, c in zip(sim.robots, sim.cfgs):
         c.dashboard_url = args.url
-        drivers.append(Driver(c, robot.name, use_dashboard=True, autostart=args.autostart))
+        drivers.append(Driver(c, robot.name, use_dashboard=True, autostart=args.autostart, model=False))
     print(f'대시보드 {args.url} 에서 START 를 누르세요 (Ctrl+C 로 종료)')
     try:
         while True:
@@ -64,8 +63,6 @@ def main():
     parser.add_argument('--seconds', type=float, default=150)
     parser.add_argument('--coordinator', action='store_true', help='횡단보도 락 사용 (2대)')
     parser.add_argument('--config', default=None)
-    parser.add_argument('--backend', default=None)
-    parser.add_argument('--weights', default=None)
     parser.add_argument('--same-color', action='store_true', help='횡단보도를 차선과 같은 흰색으로')
     parser.add_argument('--headless', action='store_true')
     parser.add_argument('--video', default=None, help='mp4 저장 경로')
@@ -76,7 +73,7 @@ def main():
     args = parser.parse_args()
 
     spec = TrackSpec()
-    overrides = {k: v for k, v in (('backend', args.backend), ('weights', args.weights)) if v}
+    overrides = {}
     if args.same_color:
         spec.crosswalk_bgr = spec.lane_bgr
     else:

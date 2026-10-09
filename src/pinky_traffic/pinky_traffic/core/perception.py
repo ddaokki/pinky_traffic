@@ -34,6 +34,7 @@ class Perception:
     route_seen: bool = False         # 주차 통로 색(빨강/파랑)이 보인다
     route_near: bool = False         # 통로 색이 로봇 바로 앞까지 왔다 (= 통로에 들어섰다)
     signs: list = field(default_factory=list)   # 파란 표지판들 [(종류, x -1..1, 먼 끝 행, 가까운 끝 행)] (lane_role)
+    sign_angles: list = field(default_factory=list)   # [(x, 축 각도 오차 도)] 표지판 정렬용 (detectors.blue_angles)
     zone_seen: bool = False          # 초록 칸 끝 선이 보인다
     zone_y: float = 0.0              # 그 아래 끝 행 / 높이
     route_end: bool = False          # 칸 끝을 가로지르는 통로 색 선이 보인다

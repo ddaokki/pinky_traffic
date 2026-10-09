@@ -16,7 +16,7 @@ YELLOW = dict(crosswalk_hsv_lo=[20, 100, 120], crosswalk_hsv_hi=[35, 255, 255])
 def test_driver_start_stop_and_param_update():
     track = Track(TrackSpec())
     frame = Camera(track).render(*track.pose_at(0.2))
-    driver = Driver(Config(**YELLOW), 'pinky1', use_dashboard=False)
+    driver = Driver(Config(**YELLOW), 'pinky1', use_dashboard=False, model=False)
     assert driver.process(frame, None, 0.0).v == 0            # START 전에는 안 움직인다
     driver.command('start')
     cmd = driver.process(frame, None, 0.1)
@@ -41,7 +41,7 @@ def test_field_yaml_loads():
     import os
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config', 'field.yaml')
     cfg = Config.load(path)
-    assert cfg.backend == 'hsv' and cfg.v_max == 0.08
+    assert cfg.weights == 'models/best.pt' and cfg.v_max == 0.08
 
 
 def test_mask_to_yolo_seg_lines():

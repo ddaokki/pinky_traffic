@@ -11,8 +11,8 @@ import yaml
 @dataclass
 class Config:
     # ---------- 인식 (perception) ----------
-    backend: str = 'hsv'            # 'hsv' (학습 전/백업) | 'yolo' (best.pt) | 'hsv+yolo' (차선은 색, 표지판·로봇은 YOLO)
-    weights: str = 'best.pt'        # yolo 가중치 경로
+    # 인식은 한 가지: 차선·횡단보도·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO (detectors.HybridDetector)
+    weights: str = 'best.pt'        # yolo 가중치 경로 (표지판·로봇 클래스)
     conf: float = 0.4               # yolo 신뢰도 임계값
     imgsz: int = 320                # yolo 입력 크기
     yolo_threads: int = 2           # yolo 가 쓰는 CPU 스레드 (로봇 2대가 PC 하나를 나눠 쓴다)
@@ -126,7 +126,7 @@ class Config:
     # 2026-10-07 표지판 맵: 파란 선 대신 바닥의 파란 양방향 표지판 두 종류를 보고 그 자리에서 돈다.
     #   turn = 우회전 양방향(꺾인 화살표, 오는 방향에 따라 우회전/좌회전), straight_right = 직우 양방향(긴 ←→ 에 칸 쪽 가지)
     # 경로 = "표지판종류:행동" 을 만나는 순서대로 쉼표로. 행동 right|left|straight. 다 지나면 흰 차선을 따라간다.
-    plan_lane1: str = 'turn:right, turn:right, straight_right:straight'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진
+    plan_lane1: str = 'turn:right, turn:right:0.12, straight_right:straight'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진. 세 번째 칸 = 그 표지판만의 sign_advance_m
     plan_lane2: str = 'straight_right:straight, turn:left, turn:left'      # 2차선, 상대가 안 온다: S 직진 -> 좌 -> 좌 (=유턴, 1차선으로)
     plan_lane2_pocket: str = 'straight_right:right'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
     plan_lane2_exit: str = 'any:right, turn:left, turn:left'               # 칸에서 나와: 입구의 표지판(직우 가지)에서 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
@@ -134,14 +134,15 @@ class Config:
     # 표지판을 따라가다 화면에서 완전히 사라지면 '도착' (가까운 끝이 sign_gone_row 아래까지 왔다가 sign_gone_sec 동안 안 보임)
     sign_gone_row: float = 0.85
     sign_gone_sec: float = 0.3
-    sign_advance_m: float = 0.12     # 도착(사라짐) 뒤 곧장 더 가는 거리 (2026-10-09 현장: 0.05 는 두 번째 표지판에서 일찍 꺾어 가벽을 봄). 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
+    sign_advance_m: float = 0.07     # 도착(사라짐) 뒤 곧장 더 가는 거리. 가벽 쪽 R2 는 plan_lane1 에서 0.12 (2026-10-09 현장: 0.05 는 R2 에서 일찍 꺾어 가벽을 봄,
+                                     # 0.12 는 R1 에서 너무 가서 돈 뒤 R2 가 화면 오른쪽 끝에 걸려 못 찾음). 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
     sign_start_row: float = 0.55     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다)
     sign_search_row: float = 0.40    # 표지판을 지나 다음 표지판을 찾으며 곧장 가는 중에는 이 행부터
     sign_max_x: float = 0.45         # 화면 가운데에서 이 범위 안(내 차선 앞)의 표지판만 (옆 차선 표지판 무시)
-    sign_search_x: float = 0.85      # 표지판을 지나 다음 표지판을 찾는 중에는 이만큼 옆까지
+    sign_search_x: float = 0.95      # 표지판을 지나 다음 표지판을 찾는 중에는 이만큼 옆까지 (2026-10-09 pinky1: 돈 뒤 R2 가 x 0.9 에 보였다)
     sign_cw_block_row: float = 0.45  # 표지판 가까운 끝이 이 행 아래로 보이면 횡단보도 검출을 끈다 (표지판 우선)
     sign_long_ratio: float = 3.0     # sign_shape 일 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
     # 2026-10-09 현장: 카메라가 낮아(6.5cm) 바닥 표지판이 납작하게 보여 우회전 표지판도 길쭉하다 -> 모양 구분이 틀린다.
@@ -153,6 +154,14 @@ class Config:
     # YOLO 표지판은 실제 파랑이 들어 있어야 인정한다 (2026-10-09: 흰 차선 한 토막을 straight_right 0.52 로 보고 다가감)
     sign_conf: float = 0.5           # 이 신뢰도 이상
     sign_blue_frac: float = 0.15     # YOLO 가 칠한 영역 중 이 비율 이상이 파랑(blue_mask)
+    # 표지판 정렬: 직우 표지판의 긴 축이 비스듬히 보이면 제자리에서 돌아 정면으로 맞춘 뒤 다가간다
+    # (2026-10-09 pinky2: 우회전 코너를 넓게 돌아 직우 표지판에 비스듬히 들어가 칸으로 비뚤게 꺾였다)
+    sign_align_deg: float = 10.0     # 축이 이보다 더 틀어져 보이면 돈다 (화면 각도, 0 = 끔)
+    sign_align_kinds: str = 'straight_right'   # 경로에서 이 종류 표지판에만
+    sign_align_w: float = 0.5        # 제자리 회전 속도 rad/s
+    sign_align_sec: float = 4.0      # 정렬은 이 시간까지만 (못 맞추면 그냥 간다)
+    sign_align_far_row: float = 0.75 # 표지판 먼 끝이 이 행보다 위에 보일 때만 (발밑에 깔리면 축이 안 보인다)
+    sign_horizon_row: float = 0.30   # 바닥과 나란한 선이 모이는 소실점 높이 (화면 위에서 / 높이)
     # 초록 칸 끝 선은 가로로 긴 띠만 (2026-10-09: 주행 중 LED 초록빛이 바닥에 비친 것)
     zone_min_width: float = 0.15     # 영상 폭의 이 비율 이상
     zone_max_aspect: float = 0.6     # 높이 / 폭 이 이하
@@ -254,6 +263,7 @@ TUNABLE = [
     ('sign_gone_row', 0.50, 1.00, 0.02),
     ('sign_advance_m', 0.0, 0.40, 0.01),
     ('sign_turn_deg', 30.0, 150.0, 5.0),
+    ('sign_align_deg', 0.0, 40.0, 1.0),
     ('zone_advance_m', 0.0, 0.30, 0.01),
     ('side_slow_m', 0.0, 0.30, 0.01),
     ('side_stop_m', 0.0, 0.20, 0.01),

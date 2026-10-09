@@ -34,14 +34,19 @@ STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP, WAIT_JUNCTION, WAIT_EXIT)
 MANEUVERS = (SIGN_APPROACH, SIGN_ADVANCE, SIGN_TURN, SIGN_SEARCH, POCKET_END, PARK_TURN)
 
 
-def parse_plan(text):
-    """'turn:right, straight_right:straight' -> [('turn', 'right'), ('straight_right', 'straight')]"""
-    plan = []
+def parse_plan(text, with_advance=False):
+    """'turn:right, straight_right:straight' -> [('turn', 'right'), ('straight_right', 'straight')]
+    세 번째 칸은 그 표지판만의 sign_advance_m ('turn:right:0.12'). with_advance 면 [거리 또는 None] 도 함께 돌려준다."""
+    plan, adv = [], []
     for item in str(text).split(','):
         if item.strip():
-            kind, _, action = item.strip().partition(':')
-            plan.append((kind.strip(), action.strip() or 'straight'))
-    return plan
+            parts = [x.strip() for x in item.strip().split(':')]
+            plan.append((parts[0], parts[1] if len(parts) > 1 and parts[1] else 'straight'))
+            try:
+                adv.append(float(parts[2]) if len(parts) > 2 and parts[2] else None)
+            except ValueError:
+                adv.append(None)
+    return (plan, adv) if with_advance else plan
 
 
 def led_color(state, in_route=False, route_color=''):
@@ -135,6 +140,9 @@ class LaneController:
         """lane_role 맵(표지판 경로 / 초록 칸)의 진행 상태."""
         self.prefer = ''                    # 'left' | 'right' : 그쪽 선만 따라간다 (검출기에 전달)
         self.plan, self.plan_i = [], 0      # 표지판 경로 [(종류, 행동)] 과 다음 순번
+        self.plan_adv = []                  # 표지판마다 따로 정한 sign_advance_m (None = 기본값)
+        self.advance_m = 0.0                # 지금 표지판에서 더 갈 거리
+        self.t_align = None                 # 표지판 정렬(제자리 회전)을 시작한 시각
         self.plan_name = ''
         self.plan_done = False              # 경로를 다 지났다 (흰 차선으로)
         self.action = ''                    # 지금 표지판에서 할 행동
@@ -188,7 +196,7 @@ class LaneController:
         self.lane2_up = on
 
     def _set_plan(self, name, now):
-        self.plan, self.plan_i, self.plan_name, self.plan_done = parse_plan(getattr(self.cfg, name)), 0, name, False
+        (self.plan, self.plan_adv), self.plan_i, self.plan_name, self.plan_done = parse_plan(getattr(self.cfg, name), True), 0, name, False
         self.events.append((now, f'plan {name}: {self.plan_text}'))
 
     def _mine(self, sign, searching=False):
@@ -215,7 +223,7 @@ class LaneController:
         return next((s for s in ok if self._mine(s, searching)), None)
 
     def _approach(self, sign, now, why):
-        self.target, self.t_target = sign, now
+        self.target, self.t_target, self.t_align = sign, now, None
         self.pid.reset()
         self._go(SIGN_APPROACH, now, f'{sign[0]} ({why})')
 
@@ -254,8 +262,28 @@ class LaneController:
                 if not self._junction(True):
                     return Command(0.0, 0.0, WAIT_JUNCTION, 'junction busy')
         self.action, self.advance = action, 0.0
-        self._go(SIGN_ADVANCE, now, f'{kind}:{action}')
+        own = self.plan_adv[self.plan_i] if self.plan_i < len(self.plan_adv) else None
+        self.advance_m = cfg.sign_advance_m if own is None else own
+        self._go(SIGN_ADVANCE, now, f'{kind}:{action} +{self.advance_m:.2f}m')
         return None
+
+    def _align(self, p, now):
+        """직우 표지판에 다가가는 중: 긴 축이 비스듬히 보이면 제자리 회전 속도를, 맞으면 None.
+        한 표지판에 sign_align_sec 까지만. 표지판이 발밑에 깔리기 시작하면(먼 끝 > sign_align_far_row) 안 한다."""
+        cfg = self.cfg
+        kinds = [k.strip() for k in str(cfg.sign_align_kinds).split(',')]
+        if cfg.sign_align_deg <= 0 or self.exiting or self.plan_i >= len(self.plan) or self.plan[self.plan_i][0] not in kinds:
+            return None
+        if self.target is None or self.target[2] > cfg.sign_align_far_row or not p.sign_angles:
+            return None
+        if self.t_align is None:
+            self.t_align = now
+        if now - self.t_align > cfg.sign_align_sec:
+            return None
+        err = min(p.sign_angles, key=lambda a: abs(a[0] - self.target[1]))[1]
+        if abs(err) <= cfg.sign_align_deg:
+            return None
+        return -cfg.sign_align_w if err > 0 else cfg.sign_align_w      # 축이 오른쪽으로 기울었다 -> 오른쪽으로 돈다
 
     def _maneuver_done(self, now):
         """표지판 하나를 마쳤다 -> 다음 표지판 찾기 / 칸으로 / 경로 끝."""
@@ -328,9 +356,13 @@ class LaneController:
             if now - self.t_mode < cfg.sign_search_sec:
                 self.t_seen = now
                 return Command(cfg.v_min, 0.0, self.state, 'look for sign')
-            self.plan_done, self.exiting, self.cleared = True, False, True
-            self._junction(False)
-            self._flag(False)
+            # 깃발·락은 바로 내리지 않는다: junction_clear_sec 동안 흰 차선을 따라 구간을 벗어난 뒤 내린다 (_clear_step)
+            # (2026-10-09: 1차선이 R2 를 못 찾고 포기하자마자 깃발을 내려 칸의 2차선이 나와 버렸다)
+            self.plan_done, self.exiting = True, False
+            self.cleared = cfg.lane_role != 1 or not self.flag_up
+            if self.cleared:
+                self._junction(False)
+            self.t_mode = now
             self.events.append((now, f'sign not found ({self.plan_name}): {self.plan_text}'))
             self._go(LANE_FOLLOW, now, 'give up plan')
         return None
@@ -519,19 +551,23 @@ class LaneController:
                 wait = self._arrived(now)
                 if wait is not None:
                     return wait
+            elif (w := self._align(p, now)) is not None:
+                return Command(0.0, w, SIGN_APPROACH, 'align')
             elif self.plan_name == 'plan_lane2_exit' and self.plan_i == 0:
                 # 칸에서 나올 때: 입구의 직우 표지판은 왼쪽으로 길게 보여 가운데를 보고 가면 칸 벽 선을 넘는다 -> 곧장 나간다
                 return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'exit straight')
             else:
                 # 차선이 보이면 차선을 따라 곧게 간다 (표지판 가운데를 보고 가면 긴 직우 표지판에서 비스듬히 간다)
-                if p.ok and not self.exiting:
+                if self.t_align is not None:
+                    w = 0.0                         # 표지판에 맞춰 돌았다 -> 차선이 아니라 그 방향으로 곧장
+                elif p.ok and not self.exiting:
                     v, w = self._steer(p, dt, cfg.v_min)
                 else:
                     v, w = self._steer(Perception(ok=True, offset=self.target[1]), dt, cfg.v_min)
                 return Command(cfg.v_min, w, SIGN_APPROACH)
         if self.state == SIGN_ADVANCE:
             self.advance += cfg.v_min * dt
-            if self.advance < cfg.sign_advance_m:
+            if self.advance < self.advance_m:
                 return Command(cfg.v_min, 0.0, SIGN_ADVANCE)
             if self.action in ('right', 'left'):
                 self._go(SIGN_TURN, now, self.action)

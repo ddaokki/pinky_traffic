@@ -15,7 +15,7 @@
 
 ## 하는 일
 
-- **인식**: 기본은 `hsv+yolo` — 차선·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO11n-seg(`turn` `straight_right` `robot`). YOLO 표지판은 실제 파랑이 들어 있을 때만 인정한다.
+- **인식**: 차선·횡단보도·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO11n-seg(`turn` `straight_right` `robot`). YOLO 는 3프레임마다 돌린다. YOLO 표지판은 실제 파랑이 들어 있을 때만 인정한다.
 - **차선 따라가기**: PID 조향. 한 프레임만 크게 튄 차선 중심은 무시한다.
 - **횡단보도**: 줄무늬를 보고 앞에서 3초 멈췄다가 지나간다.
 - **충돌 방지 (라이다)**: 정면이 가까우면 선다. 나란히 달리다 옆 로봇이 붙으면 반대쪽으로 비키고, 너무 가까우면 전진을 멈춘다.
@@ -28,7 +28,8 @@
     또는 깃발이 내려가면 나와서 우 → 좌 → 좌로 1차선에 간다. 깃발이 없으면 직진 → 좌 → 좌.
   - 깃발과 유턴 구간 락은 대시보드 서버가 맡는다. 두 로봇은 `ROS_DOMAIN_ID` 가 달라 ROS 로는 서로 안 보인다.
 
-  표지판은 내 차선 앞에서 충분히 가까이 왔을 때만 다가가고, 화면에서 사라질 때까지 간 뒤 멈춰서 90도 돈다.
+  표지판은 내 차선 앞에서 충분히 가까이 왔을 때만 다가가고, 화면에서 사라질 때까지 간 뒤 조금 더 가서 멈추고 90도 돈다.
+  직우 표지판이 비스듬히 보이면 먼저 제자리에서 돌아 표지판과 나란히 맞춘 뒤 다가간다.
 
   | 로봇 | 상황 | 표지판에서 하는 일 |
   |---|---|---|
@@ -81,7 +82,7 @@ python3 -m pinky_traffic.tools.run_sim --dashboard --robots 2 --coordinator   # 
 
 ```
 src/pinky_traffic/
-  pinky_traffic/core/        config · perception · detectors(hsv/yolo) · controller · coordinator · driver   (ROS 없음)
+  pinky_traffic/core/        config · perception · detectors(차선 색 + 표지판·로봇 YOLO) · controller · coordinator · driver   (ROS 없음)
   pinky_traffic/nodes/       lane_driver(PC) · camera_pub(로봇)
   pinky_traffic/dashboard/   server.py · index.html · testcases.json
   pinky_traffic/sim/         track(코스·카메라) · runner(닫힌 루프)

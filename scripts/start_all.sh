@@ -12,7 +12,6 @@ ROBOTS=(
   "pinky1 192.168.129.199 24 0 true"
   "pinky2 192.168.129.200 23 0 true"
 )
-BACKEND="${BACKEND:-hsv+yolo}"   # 차선은 색, 표지판·로봇은 YOLO(models/best.pt). 전부 색으로: BACKEND=hsv scripts/start_all.sh
 SSH_OPTS=(-o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
 
 say()  { echo -e "\n\033[1;36m▶ $*\033[0m"; }
@@ -73,13 +72,13 @@ else
   for _ in $(seq 20); do ss -ltn | grep -q ':8088 ' && break; sleep 0.5; done
 fi
 
-say "주행 노드 ($BACKEND) — START 를 누르기 전에는 움직이지 않습니다"
+say "주행 노드 (차선은 색, 표지판·로봇은 YOLO) — START 를 누르기 전에는 움직이지 않습니다"
 # 이미 떠 있는 주행 노드는 끈다 (두 번 누르면 한 로봇을 두 프로그램이 몰게 된다)
 kill $(pgrep -f "lane_[d]river") 2>/dev/null && sleep 1
 for d in "${DRIVERS[@]}"; do
   read -r NAME DOMAIN LANE <<<"$d"
   gnome-terminal --tab --title="$NAME" -- bash -c \
-    "PINKY_PEERS='$PEERS' '$WS/scripts/drive.sh' $NAME $DOMAIN $BACKEND '' $LANE; exec bash"
+    "PINKY_PEERS='$PEERS' '$WS/scripts/drive.sh' $NAME $DOMAIN '' $LANE; exec bash"
 done
 
 xdg-open http://localhost:8088 >/dev/null 2>&1 &

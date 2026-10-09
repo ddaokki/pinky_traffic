@@ -15,9 +15,10 @@ from .perception import draw_debug, draw_objects
 
 
 class Driver:
-    def __init__(self, cfg, name='pinky', use_dashboard=True, autostart=False, log=print, record_dir=None):
-        self.cfg, self.name, self.log = cfg, name, log
-        self.detector = make_detector(cfg)
+    def __init__(self, cfg, name='pinky', use_dashboard=True, autostart=False, log=print, record_dir=None, model=True):
+        """model=False: YOLO 없이 색만 (시뮬레이터·테스트). 실제 주행은 늘 True."""
+        self.cfg, self.name, self.log, self.model = cfg, name, log, model
+        self.detector = make_detector(cfg, model)
         self.pending = []                   # 대시보드에서 온 명령 (다른 스레드) -> 제어 루프에서 처리
         self.mutex = threading.Lock()
         self.link = DashLink(cfg.dashboard_url, name, self._on_command, self._on_params) if use_dashboard else None
@@ -61,8 +62,8 @@ class Driver:
                 changed = self.cfg.update(item[1])
                 if changed:
                     self.log(f'[{self.name}] 파라미터 변경: ' + ', '.join(f'{k}={getattr(self.cfg, k)}' for k in changed))
-                    if 'backend' in changed or 'weights' in changed:
-                        self.detector = make_detector(self.cfg)
+                    if 'weights' in changed:
+                        self.detector = make_detector(self.cfg, self.model)
             elif item == 'start':
                 self._forget()
                 self.controller.start(now)
@@ -112,7 +113,7 @@ class Driver:
                  'front': None if front_m is None else round(front_m, 2), 'fps': round(self.fps, 1),
                  'side_l': None if not sides or sides[0] is None else round(sides[0], 2),
                  'side_r': None if not sides or sides[1] is None else round(sides[1], 2), 'lidar': lidar_ok,
-                 'ms': round(p.ms, 1), 'backend': self.cfg.backend, 'reason': cmd.reason,
+                 'ms': round(p.ms, 1), 'backend': 'hsv+yolo' if self.model else 'hsv(sim)', 'reason': cmd.reason,
                  'crossings': self.controller.crossings,
                  'route': self.controller.in_route, 'route_seen': p.route_seen,
                  'route_end_y': round(p.route_end_y, 2), 'role': self.cfg.lane_role,
@@ -142,7 +143,7 @@ class Driver:
         self._apply_pending(now)
         if self.link:
             self.link.report({'state': self.controller.state, 'v': 0.0, 'w': 0.0, 'reason': reason,
-                              'backend': self.cfg.backend, 'fps': 0.0})
+                              'backend': 'hsv+yolo' if self.model else 'hsv(sim)', 'fps': 0.0})
 
     def close(self):
         if self.link:
