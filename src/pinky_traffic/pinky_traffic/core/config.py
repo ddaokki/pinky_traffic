@@ -143,7 +143,7 @@ class Config:
     sign_backoff_x: float = 0.90     # 회전 뒤 발밑 표지판이 가로로 이 안이면 물러나서 본다 (구석에 걸린 것도)
     sign_backoff_far_row: float = 0.65   # 표지판 먼 끝이 이 행보다 위로 올라오면 다 보이는 것 -> 후진 끝
     sign_backoff_settle_sec: float = 0.8 # 후진을 멈춘 뒤 이만큼 서서 표지판을 본 다음 고른다
-    sign_track_back_row: float = 0.25  # 추적 중 표지판 끝이 갑자기 멀어지면 다른 표지판으로 본다
+    sign_track_back_row: float = 0.12  # 추적 중 표지판 끝이 이만큼 넘게 갑자기 멀어지면 다른 표지판으로 본다 (0.25 는 직우 끝에서 다음 좌회전 표지판으로 넘어갔다)
     sign_steer_w: float = 0.45       # 표지판 접근 조향 상한 (놓친 좌표로 급회전하지 않게)
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
     sign_start_row: float = 0.65     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다. 2026-10-09: 0.55 는 횡단보도 지나 R1 이 보이자마자 차선을 버리고 감)
