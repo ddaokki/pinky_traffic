@@ -33,7 +33,7 @@ route_color: ''              # 2026-10-04 새 맵: 주차 통로(빨강/파랑) 
 lane_role: 0
 sign_advance_m: 0.06        # 직우 표지판 도착 뒤 6cm 추가 전진
 sign_arrive_far_row: 0.75   # 0.73의 체감이 작아 표지판 위로 조금 더 전진
-plan_lane1: 'turn:right:0.10, turn:right:0.07'  # 첫 회전은 8cm 가서 다음 회전 표지를 정면에 둔다
+plan_lane1: 'turn:right:0.15, turn:right:0.07'  # 첫 우회전(R1)은 15cm 더 가서 다음 회전 표지를 정면에 둔다 (0.10 은 다음 표지가 안 보임)
 sign_shape: true             # 긴 직우와 짧은 회전 표지를 파란 형상으로 구분
 sign_backoff_m: 0.04         # 첫 회전 뒤 다음 표지가 카메라 바로 밑이면 4cm 후진해 전체 모양 확인
 plan_lane2: 'straight_right:straight, turn:left:0.06, turn:left:0.06'  # 좌회전 표지는 파랑이 사라진 뒤 6cm 더 전진

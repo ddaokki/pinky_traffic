@@ -127,7 +127,7 @@ class Config:
     # 2026-10-07 표지판 맵: 파란 선 대신 바닥의 파란 양방향 표지판 두 종류를 보고 그 자리에서 돈다.
     #   turn = 우회전 양방향(꺾인 화살표, 오는 방향에 따라 우회전/좌회전), straight_right = 직우 양방향(긴 ←→ 에 칸 쪽 가지)
     # 경로 = "표지판종류:행동" 을 만나는 순서대로 쉼표로. 행동 right|left|straight. 다 지나면 흰 차선을 따라간다.
-    plan_lane1: str = 'turn:right:0.10, turn:right:0.07'  # 1차선: R1은 10cm 더 가서 R2를 정면에, R2는 7cm 더 가서 유턴
+    plan_lane1: str = 'turn:right:0.15, turn:right:0.07'  # 1차선: R1은 15cm 더 가서 R2를 정면에, R2는 7cm 더 가서 유턴
     plan_lane2: str = 'straight_right:straight, turn:left:0.06, turn:left:0.06'  # 2차선: S는 거리 기준, 좌회전 표지는 사라진 뒤 6cm 전진
     plan_lane2_pocket: str = 'straight_right:right:0.0'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
     plan_lane2_exit: str = 'any:right, turn:left:0.06, turn:left:0.06'     # 칸에서 나와: 입구 직우에서 우회전 -> 좌 -> 좌
