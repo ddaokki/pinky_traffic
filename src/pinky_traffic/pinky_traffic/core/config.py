@@ -40,6 +40,7 @@ class Config:
     crosswalk_min_stripes: int = 3  # 같은 색 모드: 줄무늬가 이 개수 이상이면 횡단보도
     crosswalk_min_area: float = 0.004
     crosswalk_stop_row: float = 0.80  # 횡단보도 아래 끝이 이 행까지 내려오면 정지
+    crosswalk_confirm: int = 3      # 처음부터 가까이서 보였어도 정지 행 앞에서 이만큼 연속으로 보이면 진짜 횡단보도
 
     # ---------- 제어 (control) ----------
     v_max: float = 0.10             # m/s

@@ -117,6 +117,8 @@ class LaneController:
         self.last_w = 0.0
         self.last_offset = None             # 직전 프레임의 차선 중심 (한 프레임 튐 거르기)
         self.side_alert = False             # 옆 물체를 피하는 중
+        self.cw_hits = 0                    # 정지 행 앞에서 횡단보도가 연속으로 보인 프레임 수
+        self.cw_first_y = 1.0
         self.intrude_dir, self.intrude_until = 0, -1.0   # 시연용 끼어들기 (+1 오른쪽, -1 왼쪽)
         self.no_lidar = False
         self.jumps = 0
@@ -580,7 +582,13 @@ class LaneController:
             cooled = now - self.t_cross_done >= cfg.crosswalk_cooldown_sec
             # 진짜 횡단보도는 먼 곳에서 먼저 보이고 점점 다가온다. 처음부터 정지 행보다 가까이(발밑)에서
             # 나타난 것은 코너의 테이프 조각 같은 오검출로 보고 무시한다 (2026-10-04 코너에서 오인 정지)
-            if p.crosswalk and cooled and p.crosswalk_y < cfg.crosswalk_stop_row - 0.12:
+            # 단 여러 프레임 계속 보이면 진짜다: 비스듬히 다가가 늦게(정지 행 바로 앞에서) 처음 잡힌 경우
+            # (2026-10-09 pinky1: 0.69 에서 처음 잡혀 0.68 기준에 1% 차로 무시되고 그냥 지나감)
+            self.cw_hits = self.cw_hits + 1 if (p.crosswalk and p.crosswalk_y < cfg.crosswalk_stop_row) else 0
+            if self.cw_hits == 1:
+                self.cw_first_y = p.crosswalk_y              # 발밑(0.72 아래)에서 처음 나타난 것은 여전히 코너 조각으로 본다
+            late_ok = self.cw_hits >= cfg.crosswalk_confirm and self.cw_first_y < cfg.crosswalk_stop_row - 0.08
+            if p.crosswalk and cooled and (p.crosswalk_y < cfg.crosswalk_stop_row - 0.12 or late_ok):
                 self._go(APPROACH, now, f'crosswalk y={p.crosswalk_y:.2f}')
             else:
                 v_target = cfg.v_min if self.pocket_mode else cfg.v_max   # 칸 안에서는 천천히

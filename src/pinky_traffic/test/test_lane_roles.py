@@ -67,6 +67,14 @@ def run(c, p, t0, t1, dt=0.1, front=1.0):
     return cmd, t
 
 
+def test_crosswalk_first_seen_late_but_persistent_still_stops():
+    # 2026-10-09 pinky1: 0.69 에서 처음 잡혀 무시하고 지나감. 연속으로 보이면 진짜다
+    c = started(crosswalk_stop_row=0.80, crosswalk_confirm=3)
+    c.step(see(crosswalk=True, crosswalk_y=0.69), 1.0, 0.1)
+    c.step(see(crosswalk=True, crosswalk_y=0.70), 1.0, 0.2)
+    assert c.step(see(crosswalk=True, crosswalk_y=0.71), 1.0, 0.3).state == 'approach_crosswalk'
+
+
 def test_crosswalk_first_seen_close_is_ignored():
     c = started(crosswalk_stop_row=0.80)
     for i in range(3):
