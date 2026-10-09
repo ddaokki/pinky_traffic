@@ -135,6 +135,7 @@ class LaneController:
         self.t_route = 0.0                  # 통로에 들어선 시각
         self.end_hits = 0                   # 칸 끝 선이 정지 행까지 온 연속 프레임 수
         self.events = []                    # (t, 문자열) 최근 이벤트
+        self.t_go = 0.0                     # 이 시각까지는 출발하지 않는다 (2차선 지연 출발)
         self.yaw = None                     # 오도메트리 방향 (rad)
         self.yaw_start = None
         self.turn_deg = None
@@ -562,6 +563,7 @@ class LaneController:
                 self._junction(False)
                 self._flag(False)
                 self._reset_role()
+            self.t_go = now + (self.cfg.lane2_start_delay_sec if self.cfg.lane_role == 2 else 0.0)
             self._go(LANE_FOLLOW, now, 'start')
 
     def intrude(self, direction, now=0.0):
@@ -593,7 +595,7 @@ class LaneController:
             self.t_state = now
 
     def _release(self):
-        if self.cfg.use_coordinator:
+        if self.cfg.use_coordinator and self.cfg.crosswalk_lock:
             self.lock.release(self.cfg.resource)
 
     def _steer(self, p: Perception, dt, v_target):
@@ -698,6 +700,9 @@ class LaneController:
 
         if self.state in (IDLE, ESTOP, PARKED):
             return Command(0.0, 0.0, self.state)
+        if now < self.t_go:
+            self.t_seen = now
+            return Command(0.0, 0.0, self.state, f'start in {self.t_go - now:.0f}s')   # 2차선은 조금 늦게 출발
         if self.junction_held and self.state in MANEUVERS:
             self._junction(True)                      # 기동 중에도 락을 계속 쥔다 (하트비트)
         if cfg.lane_role == 1 and self.flag_up and not self.cleared:
@@ -925,7 +930,8 @@ class LaneController:
 
         # ---- 횡단보도 정지 ----
         if self.state == STOP:
-            granted = self.lock.request(cfg.resource) if cfg.use_coordinator else True
+            # 횡단보도 락(한 대씩 통과)은 기본으로 끈다: 각자 3초 섰다 간다 (2026-10-10 현장: 다른 한 대를 기다리느라 1차선 진입이 늦어져 U턴 중인 2차선과 겹침)
+            granted = self.lock.request(cfg.resource) if cfg.use_coordinator and cfg.crosswalk_lock else True
             waited = now - self.t_state
             if waited >= cfg.crosswalk_stop_sec and granted:
                 self._go(CROSSING, now, f'waited {waited:.1f}s')
@@ -981,7 +987,7 @@ class LaneController:
                 return Command(v, w, LANE_FOLLOW, 'intrude' if now < self.intrude_until else '')
 
         if self.state == APPROACH:
-            if cfg.use_coordinator:
+            if cfg.use_coordinator and cfg.crosswalk_lock:
                 self.lock.request(cfg.resource)       # 미리 줄을 선다
             if p.crosswalk and p.crosswalk_y >= cfg.crosswalk_stop_row:
                 self._go(STOP, now, f'y={p.crosswalk_y:.2f}')
@@ -993,7 +999,7 @@ class LaneController:
             return Command(v, w, self.state)
 
         if self.state == CROSSING:
-            if cfg.use_coordinator:
+            if cfg.use_coordinator and cfg.crosswalk_lock:
                 self.lock.request(cfg.resource)       # 통과 중에도 계속 불러 자리를 유지(하트비트)
             if now - self.t_state >= cfg.crossing_sec:
                 self.crossings += 1

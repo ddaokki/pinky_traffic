@@ -965,3 +965,13 @@ def test_tracking_s_does_not_continue_onto_next_turn_sign():
     c.step(sign('straight_right', far=0.70, near=1.0), 1.0, 0.3)
     nxt = see(signs=[('blue', -0.06, 0.52, 0.80)])                        # 직우는 발밑으로 사라지고 다음 표지판이 앞에 보인다
     assert c._wanted_sign(nxt, tracking=True) is None
+
+
+def test_lane2_starts_three_seconds_late():
+    c = LaneController(Config(lane_role=2, lane2_start_delay_sec=3.0))
+    c.start(10.0)
+    assert c.step(see(), 1.0, 11.0).v == 0 and c.step(see(), 1.0, 12.9).v == 0
+    assert c.step(see(), 1.0, 13.1).v > 0
+    c1 = LaneController(Config(lane_role=1, lane2_start_delay_sec=3.0))
+    c1.start(10.0)
+    assert c1.step(see(), 1.0, 10.1).v > 0                                # 1차선은 바로 출발

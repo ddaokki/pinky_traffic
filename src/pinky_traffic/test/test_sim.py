@@ -67,7 +67,7 @@ def test_recovers_from_bad_start_pose():
 
 @pytest.fixture(scope='module')
 def pair():
-    sim = Simulation(Config(**YELLOW), n_robots=2, use_coordinator=True)
+    sim = Simulation(Config(crosswalk_lock=True, **YELLOW), n_robots=2, use_coordinator=True)
     return sim, sim.run(200)
 
 

@@ -49,3 +49,4 @@ dashboard_url: http://127.0.0.1:8088
 lane_width_near: 1.05
 lane_width_far: 0.62
 single_line_width: 1.00     # 한쪽 선만 보일 때 쓰는 폭 상한 (0.70·0.90 은 보이는 중앙선에 붙어 달렸다)
+lane2_start_delay_sec: 3.0  # 전체 START 때 2차선은 3초 늦게 출발 (1차선이 먼저 진입)

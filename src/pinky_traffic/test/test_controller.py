@@ -147,7 +147,7 @@ class FakeLock:
 
 
 def test_waits_for_lock_then_releases_after_crossing():
-    cfg = Config(use_coordinator=True, crosswalk_stop_sec=1.0, crossing_sec=2.0)
+    cfg = Config(use_coordinator=True, crosswalk_lock=True, crosswalk_stop_sec=1.0, crossing_sec=2.0)
     lock = FakeLock()
     c = started(cfg, lock)
     c.step(lane(), None, 0.1)

@@ -235,6 +235,8 @@ class Config:
     wall_blob_fill: float = 0.45     # 자기 상자를 이만큼 채우면 벽의 면 (비스듬한 차선 테이프는 0.3 아래)
     wall_base_min: float = 0.15      # 벽 아래 끝이 ROI 위 경계에서 이만큼 넘게 내려와 있으면 가까운 벽: 밑단 띠를 차선으로 쓴다
     wall_base_px: int = 8            # 그 띠의 두께 (px)
+    lane2_start_delay_sec: float = 0.0   # START 를 받은 2차선 로봇이 이만큼 기다렸다 출발 (현장은 field.yaml 에서 3초: 1차선이 먼저 진입하게)
+    crosswalk_lock: bool = False     # True 면 횡단보도를 한 대씩 통과 (서버 락). 기본은 각자 멈췄다 간다
     wall_from_top: bool = True       # 화면 맨 위부터 이어져 내려오는 흰색(벽 면)은 차선에서 뺀다
     lane_wall_band: float = 0.18     # 그 아래 이만큼(영상 높이 비율) 안에서도 lane_wall_base 보다 넓게 흰 행은 벽 밑단으로 지운다
     lane_wall_base: float = 0.50     # ROI 위 경계 바로 아래 행이 이 폭보다 넓게 희면 벽 밑단으로 보고 지운다
