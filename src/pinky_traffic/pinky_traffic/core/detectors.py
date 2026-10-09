@@ -303,7 +303,11 @@ class HybridDetector(HsvDetector):
         self.role_marks(frame)                   # 초록 선 (+ 색으로 찾은 표지판)
         signs, objects, obstacle_y = self.last
         if cfg.lane_role and self.has_signs:
-            self.signs, self.objects = list(signs), list(objects)
+            # YOLO 가 못 잡으면 색으로 찾은 파란 표지판을 쓴다 (2026-10-09 pinky2: 직우 막대 위에 올라서니 YOLO 가 거의 못 잡아
+            # 표지판을 앞에 두고 15초 멈춤). 색은 진한 파랑에 붙은 부분만 파랑으로 본다 (blue_mask) -> 흰 선 오인 없음
+            hsv_signs = self.signs
+            self.signs = list(signs) if signs else hsv_signs
+            self.objects = list(objects) if signs else self.objects + [o for o in objects if o[0] == 'robot']
         else:
             self.objects = self.objects + [o for o in objects if o[0] == 'robot']
         p, masks = self.perceive(frame, masks, found)

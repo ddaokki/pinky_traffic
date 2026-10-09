@@ -675,3 +675,26 @@ def test_not_arrived_while_blue_still_ahead():
     assert c.state == SIGN_APPROACH and cmd.v > 0 and cmd.reason == 'blue ahead'
     run(c, see(), 1.5, 2.0)
     assert c.state == SIGN_ADVANCE                                        # 파랑이 다 지나가면 도착
+
+
+def test_lost_robot_still_goes_to_sign_in_front():
+    # 2026-10-09 pinky2: 차선이 가벽·직우 표지판에 가려 LOST 가 된 채 표지판을 바로 앞에 두고 15초 멈춤
+    c = started(lane_role=2, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    run(c, Perception(), 0.1, 3.0)
+    assert c.state == 'lost'
+    cmd = c.step(Perception(signs=[('blue', 0.05, 0.3, 1.0)]), 1.0, 3.1)
+    assert c.state == SIGN_APPROACH and c.plan_name == 'plan_lane2'
+
+
+def test_lane1_follows_right_line_past_pocket_entrance_after_s():
+    # 2026-10-09: S 직진 뒤 차선 따라가기로 돌아가자 칸 입구 선을 따라 좌회전
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
+    cmd, t = through(c, AT_T, FAR_T, t, 'right')
+    cmd, t = through(c, AT_S, FAR_S, t, 'straight')
+    c.step(see(), 1.0, t + 0.1)
+    assert c.plan_done and c.prefer == 'right'
+    run(c, see(), t + 0.1, t + 8.5)
+    assert c.cleared and c.prefer == ''

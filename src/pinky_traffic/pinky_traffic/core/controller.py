@@ -399,7 +399,12 @@ class LaneController:
             self._junction(True)                      # 하트비트
         if self.plan_done:
             if not self.cleared:
+                # 1차선: S 를 곧장 지난 뒤 구간을 벗어날 때까지 오른쪽 선만 따라간다. 왼쪽은 초록 칸 입구라 흰 선이 그쪽으로 꺾여 있다
+                # (2026-10-09: S 직진 뒤 차선 따라가기로 돌아가자 칸 입구 선을 따라 좌회전)
+                self.prefer = 'right' if cfg.lane_role == 1 and self.plan_name == 'plan_lane1' else self.prefer
                 self._clear_step(now)
+                if self.cleared:
+                    self.prefer = ''
             return None
         if self.pocket_mode:
             if self.state == LANE_FOLLOW and now - self.t_mode > cfg.pocket_giveup_sec:
@@ -690,7 +695,8 @@ class LaneController:
             if self.state == APPROACH:
                 self._release()
                 self._go(LANE_FOLLOW, now, 'sign over crosswalk')
-        if cfg.lane_role and self.state in (LANE_FOLLOW, SIGN_SEARCH):
+        if cfg.lane_role and self.state in (LANE_FOLLOW, SIGN_SEARCH, LOST):
+            # LOST 에서도 표지판은 본다 (차선이 가벽·표지판에 가려 안 보여도 표지판이 바로 앞이면 그리로)
             wait = self._role_step(p, now, dt)
             if wait is not None:
                 return wait
