@@ -176,6 +176,8 @@ class LaneController:
         self.cleared = False                # 경로를 마치고 구간을 벗어났다 (락 반납, 깃발 내림)
         self.flag_up = False                # 1차선: oncoming 깃발을 올려 두었다
         self.flag_lowered = False           # 1차선: 경로를 마치고 깃발을 내렸다 (다시 올리지 않는다)
+        self.t_return = None                # 돌아오는 길 횡단보도를 건넌 시각 (그 뒤 한쪽 선만 따라간다)
+        self.return_done = False
         self.cross_at_done = None           # 경로를 마친 순간의 횡단보도 통과 횟수 (그 뒤 한 번 더 건너면 도착선을 본다)
         self.t_decide = None                # 2차선: 직우 표지판 위에서 깃발을 기다리기 시작한 시각
         self.saw_robot = False              # 2차선: 칸에서 상대 로봇을 봤다
@@ -962,9 +964,20 @@ class LaneController:
             return Command(0.0, 0.0, BLOCKED)
 
         # ---- 도착선: 경로를 다 마치고 횡단보도를 한 번 더 건넌 뒤, 초록 가로선이 발 앞에 오면 선다 (출발 지점에 깐 초록 선) ----
-        if cfg.lane_role and self.plan_done and cfg.finish_line:
+        if cfg.lane_role and self.plan_done:
             if self.cross_at_done is None:
                 self.cross_at_done = self.crossings
+            # 유턴해서 돌아오는 길: 횡단보도를 건넌 뒤 갈림에서는 왼쪽 차선으로 간다 (현장 요청: 오른쪽 차선으로 들어갔다)
+            # -> 건넌 뒤 return_prefer_sec 동안 그쪽 선만 따라간다
+            if cfg.return_prefer and self.crossings > self.cross_at_done:
+                if self.t_return is None:
+                    self.t_return = now
+                    self.events.append((now, f'return: follow {cfg.return_prefer} line'))
+                if now - self.t_return < cfg.return_prefer_sec:
+                    self.prefer = cfg.return_prefer
+                elif self.prefer == cfg.return_prefer and not self.return_done:
+                    self.prefer, self.return_done = '', True
+        if cfg.lane_role and self.plan_done and cfg.finish_line:
             hit = self.state == LANE_FOLLOW and self.crossings > self.cross_at_done and p.zone_seen \
                 and p.zone_y >= cfg.finish_line_row
             self.finish_hits = self.finish_hits + 1 if hit else 0

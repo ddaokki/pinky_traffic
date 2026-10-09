@@ -1057,3 +1057,19 @@ def test_remnant_of_long_sign_underfoot_is_not_the_next_sign():
     cmd = c.step(p, 1.0, 0.1)
     assert cmd.v >= 0                                                    # 직우 조각 때문에 후진하지 않는다
     assert c.state == SIGN_APPROACH and c.target[1] == -0.04             # 앞의 진짜 좌회전 표지판을 고른다
+
+
+def test_after_return_crosswalk_follows_left_line():
+    c = started(lane_role=1, **dict(SIGN, plan_lane1='turn:right, turn:right', crosswalk_stop_sec=1.0, crossing_sec=1.0,
+                                    crosswalk_cooldown_sec=0.0, junction_clear_sec=1.0, return_prefer='left', return_prefer_sec=5.0))
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
+    cmd, t = through(c, AT_T, FAR_T, t, 'right')
+    cmd, t = run(c, see(), t, t + 2.0)
+    assert c.prefer != 'left'
+    cmd, t = run(c, see(crosswalk=True, crosswalk_y=0.5), t, t + 0.3)
+    cmd, t = run(c, see(crosswalk=True, crosswalk_y=0.85), t, t + 1.5)
+    cmd, t = run(c, see(), t, t + 2.0)
+    assert c.crossings == 1 and c.prefer == 'left'                       # 건넌 뒤에는 왼쪽 선만
+    cmd, t = run(c, see(), t, t + 5.0)
+    assert c.prefer == ''

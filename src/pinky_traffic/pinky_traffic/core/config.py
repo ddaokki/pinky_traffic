@@ -241,6 +241,8 @@ class Config:
     robot_mask_conf: float = 0.8     # YOLO 'robot' 이 이 신뢰도 이상이면 그 영역의 파랑은 표지판에서 뺀다
     robot_mask_pad: float = 0.25     # 로봇 박스를 가로·세로 이 비율만큼 넓혀서 뺀다
     pocket_late_sec: float = 2.0     # 2차선: 직우를 직진으로 지난 뒤 이 시간 안에 1차선 신호가 오면 그 자리에서 우회전해 칸으로
+    return_prefer: str = ''          # 유턴해서 돌아오는 길, 횡단보도를 건넌 뒤 따라갈 쪽 선 ('left'|'right'|''). 현장은 field.yaml 에서 left
+    return_prefer_sec: float = 12.0  # 그 선만 따라가는 시간
     oncoming_clear_sec: float = 3.0  # 1차선: 경로를 마치고 차선 따라가기로 돌아온 뒤 이만큼 지나면 깃발을 내린다 (칸의 2차선 출발)
     finish_line: bool = True         # 경로를 마치고 횡단보도를 한 번 더 건넌 뒤 초록 가로선을 만나면 정지 (도착)
     finish_line_row: float = 0.80    # 초록 선 아래 끝이 이 행까지 오면 선다
