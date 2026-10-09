@@ -216,8 +216,7 @@ def yolo_objects(r, names, h, w, cfg):
             if (name in SIGNS or name == 'robot') and poly is not None and len(poly) >= 3:
                 obj = np.zeros((h, w), np.uint8)
                 cv2.fillPoly(obj, [np.asarray(poly, np.int32)], 255)
-                shown = name if (name == 'robot' or cfg.sign_use_kind) else 'sign'
-                objects.append((shown, None if conf is None else float(conf), obj))
+                objects.append((name, None if conf is None else float(conf), obj))   # 화면에는 학습한 이름 그대로
             if name == 'robot':
                 obstacle_y = max(obstacle_y, float(box[3] / (h - 1)))
             if name in SIGNS:
