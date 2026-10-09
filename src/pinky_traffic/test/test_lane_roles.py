@@ -1031,3 +1031,17 @@ def test_lane2_stays_in_pocket_while_robot_still_in_view_after_flag_down():
     assert cmd.state == WAIT_EXIT
     cmd = run_flag(c, clock, see(), clock.t + 2.0)                       # 1.5초 넘게 안 보인다
     assert c.exiting
+
+
+def test_lane1_flag_goes_down_even_while_stopped_at_crosswalk():
+    # 2026-10-10: 차선 복귀 2초 만에 횡단보도 접근으로 넘어가 깃발 내리기가 멈춰, 횡단보도를 다 건넌 뒤에야 내려갔다
+    clock = Clock()
+    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **dict(POCKET, plan_lane1='turn:right, turn:right', oncoming_clear_sec=3.0))
+    run_flag(a, clock, see(), 0.1)
+    run_flag(a, clock, FAR_T, 0.2)
+    through(a, AT_T, FAR_T, clock.t, 'right', clock)
+    through(a, AT_T, FAR_T, clock.t, 'right', clock)
+    run_flag(a, clock, see(), clock.t + 1.0)
+    run_flag(a, clock, see(crosswalk=True, crosswalk_y=0.5), clock.t + 0.5)
+    run_flag(a, clock, see(crosswalk=True, crosswalk_y=0.85), clock.t + 2.5)   # 횡단보도 앞에 서 있다
+    assert a.state in ('stop_at_crosswalk', 'approach_crosswalk', 'crossing') and clock.mgr.flags_of_others('b') == []

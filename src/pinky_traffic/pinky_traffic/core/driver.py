@@ -121,6 +121,10 @@ class Driver:
                  'prefer': self.controller.prefer, 'sign': p.signs[0][0] if p.signs else '', 'plan': self.controller.plan_text, 'zone_y': round(p.zone_y, 2), 'led': list(self.controller.led)}
         text = f'{self.name} {cmd.state} v={cmd.v:.2f} w={cmd.w:+.2f}'
         self.debug = draw_debug(small, p, masks, text)
+        shown = [o for o in getattr(self.detector, 'objects', []) if o[0] != 'sign']   # YOLO 가 지금 인식한 것 (표지판 종류·로봇)
+        if shown:
+            # 대시보드 화면에 YOLO 인식 결과(마스크·박스·이름·신뢰도)를 겹쳐 보여 준다
+            self.debug = draw_objects(self.debug, shown)
         if self.link:
             self.link.report(state)
             if self._n % 2 == 0:          # 영상은 절반만 올린다

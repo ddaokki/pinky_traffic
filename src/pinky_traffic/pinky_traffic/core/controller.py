@@ -717,6 +717,14 @@ class LaneController:
             self._junction(True)                      # 기동 중에도 락을 계속 쥔다 (하트비트)
         if cfg.lane_role == 1 and self.flag_up and not self.cleared and not self.flag_lowered:
             self._flag(True)
+        if cfg.lane_role == 1 and self.plan_done and not self.flag_lowered and self.flag_up \
+                and self.exit_run >= cfg.lane1_exit_m and now - self.t_mode >= cfg.oncoming_clear_sec:
+            # 깃발 내리기는 어떤 상태에서든 시간으로 (2026-10-10: 차선 따라가기 상태에서만 세다 보니 횡단보도 접근·정지·통과 동안
+            # 멈춰 있어 17초 뒤, 횡단보도를 다 건넌 뒤에야 내려감)
+            self.flag_lowered = True
+            self._junction(False)
+            self._flag(False)
+            self.events.append((now, 'oncoming flag down'))
         if cfg.lane_role == 2 and (self.lane2_up or (self.plan and not (self.pocket_parked or self.plan_done))):
             self._flag2(True)                         # 표지판 기동 중에도 '2차선 진행 중' 깃발을 계속 올린다 (안 부르면 4초 뒤 사라진다)
         if self.state == SIGN_HOLD:
