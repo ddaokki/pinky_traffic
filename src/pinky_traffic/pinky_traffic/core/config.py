@@ -69,8 +69,9 @@ class Config:
     side_guard: bool = True
     side_angle_from: float = 35.0
     side_angle_to: float = 110.0
-    side_slow_m: float = 0.15        # 이 안이면 반대쪽으로 조향 + 감속
-    side_stop_m: float = 0.09        # 이 안이면 전진은 멈추고 피하는 회전만
+    # 2026-10-09 현장: 나란히 세우면 옆 로봇까지 0.14~0.15m (라이다는 로봇 가운데, 실제 틈 약 8cm), 바깥 벽도 0.15m
+    side_slow_m: float = 0.10        # 이 안이면 반대쪽으로 조향 + 감속 (실제 틈 약 4cm)
+    side_stop_m: float = 0.07        # 이 안이면 전진은 멈추고 피하는 회전만 (실제 틈 약 1~2cm)
     side_push_w: float = 0.8         # 피하는 회전 세기 (rad/s, 가까울수록 이만큼까지)
     intrude_offset: float = 0.6      # 시연용 끼어들기: 차선 중심을 이만큼 옆으로 밀어 본다 (약 13cm)
     intrude_sec: float = 4.0

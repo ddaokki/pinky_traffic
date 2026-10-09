@@ -163,11 +163,11 @@ def test_waits_for_lock_then_releases_after_crossing():
 def test_side_guard_steers_away_and_slows():
     c = started()
     c.step(lane(), None, 0.1)
-    free = c.step(lane(), None, 0.2, sides=(0.30, 0.30))
-    assert free.reason == '' and free.v > 0                               # 옆 로봇이 멀면 그대로
-    cmd = c.step(lane(), None, 0.3, sides=(0.12, 0.30))                   # 왼쪽으로 밀고 들어온다
+    free = c.step(lane(), None, 0.2, sides=(0.14, 0.15))
+    assert free.reason == '' and free.v > 0                               # 나란히 달리는 거리(14~15cm)면 그대로
+    cmd = c.step(lane(), None, 0.3, sides=(0.085, 0.30))                  # 왼쪽으로 밀고 들어온다
     assert cmd.w < free.w - 0.3 and 0 < cmd.v < free.v and cmd.reason.startswith('side L')
-    cmd = c.step(lane(), None, 0.4, sides=(0.30, 0.07))                   # 오른쪽에 바짝
+    cmd = c.step(lane(), None, 0.4, sides=(0.30, 0.05))                   # 오른쪽에 바짝
     assert cmd.v == 0 and cmd.w > 0                                       # 전진은 멈추고 왼쪽으로 비킨다
 
 
@@ -183,7 +183,7 @@ def test_intrude_demo_drifts_toward_neighbor_and_ignores_own_guard():
     c = started()
     c.step(lane(), None, 0.1)
     c.intrude(+1, 0.1)
-    cmd = c.step(lane(), None, 0.2, sides=(0.30, 0.10))
+    cmd = c.step(lane(), None, 0.2, sides=(0.30, 0.06))
     assert cmd.w < -0.3 and cmd.reason == 'intrude'                       # 오른쪽(옆 차선)으로 붙는다, 자기는 안 비킨다
-    cmd = c.step(lane(), None, 4.3, sides=(0.30, 0.10))
+    cmd = c.step(lane(), None, 4.3, sides=(0.30, 0.06))
     assert cmd.reason.startswith('side R') and cmd.w > cmd.w - 1          # 4초 뒤에는 다시 비킨다
