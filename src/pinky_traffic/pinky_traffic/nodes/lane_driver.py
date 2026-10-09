@@ -31,15 +31,20 @@ from ..core.driver import Driver
 from ..core.retention import prune_frames
 
 
-def front_range(scan: LaserScan, half_angle_deg, yaw_offset_deg=0.0):
-    """라이다에서 정면 ±half_angle 안의 최소 거리. 유효값이 없으면 None."""
+def sector_range(scan: LaserScan, from_deg, to_deg, yaw_offset_deg=0.0):
+    """라이다에서 from_deg~to_deg 사이(정면 0, 왼쪽 +) 최소 거리. 유효값이 없으면 None."""
     ranges = np.asarray(scan.ranges, dtype=np.float32)
     if ranges.size == 0:
         return None
     angles = scan.angle_min + np.arange(ranges.size) * scan.angle_increment - math.radians(yaw_offset_deg)
-    angles = np.arctan2(np.sin(angles), np.cos(angles))
-    valid = np.isfinite(ranges) & (ranges > max(scan.range_min, 0.03)) & (np.abs(angles) <= math.radians(half_angle_deg))
+    angles = np.degrees(np.arctan2(np.sin(angles), np.cos(angles)))
+    valid = np.isfinite(ranges) & (ranges > max(scan.range_min, 0.03)) & (angles >= from_deg) & (angles <= to_deg)
     return float(ranges[valid].min()) if valid.any() else None
+
+
+def front_range(scan: LaserScan, half_angle_deg, yaw_offset_deg=0.0):
+    """라이다에서 정면 ±half_angle 안의 최소 거리. 유효값이 없으면 None."""
+    return sector_range(scan, -half_angle_deg, half_angle_deg, yaw_offset_deg)
 
 
 class LaneDriverNode(Node):
@@ -75,7 +80,9 @@ class LaneDriverNode(Node):
                              log=lambda text: self.get_logger().info(text), record_dir=record_dir)
         self.bridge = CvBridge()
         self.front = None
+        self.sides = (None, None)
         self.t_scan = 0.0
+        self.use_scan = bool(get('use_scan'))
         self.t_image = 0.0
         self.image_timeout = float(get('image_timeout'))
 
@@ -88,7 +95,7 @@ class LaneDriverNode(Node):
             self.create_subscription(Image, get('image_topic'), self.on_image, qos_profile_sensor_data)
         if get('use_scan'):
             self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
-        self.create_subscription(Float32, 'battery/voltage', self.on_battery, 10)
+        self.create_subscription(Float32, 'battery/voltage', self.on_battery, qos_profile_sensor_data)
         self.create_timer(0.1, self.watchdog)
         self.led_client, self.led_now, self.led_warned = None, None, False
         if get('use_led'):
@@ -105,7 +112,10 @@ class LaneDriverNode(Node):
         self.driver.battery = round(float(msg.data), 2)
 
     def on_scan(self, msg):
-        self.front = front_range(msg, self.cfg.front_angle_deg, self.cfg.lidar_yaw_offset_deg)
+        cfg = self.cfg
+        self.front = front_range(msg, cfg.front_angle_deg, cfg.lidar_yaw_offset_deg)
+        self.sides = (sector_range(msg, cfg.side_angle_from, cfg.side_angle_to, cfg.lidar_yaw_offset_deg),
+                      sector_range(msg, -cfg.side_angle_to, -cfg.side_angle_from, cfg.lidar_yaw_offset_deg))
         self.t_scan = time.time()
 
     def on_compressed(self, msg):
@@ -119,8 +129,10 @@ class LaneDriverNode(Node):
     def on_frame(self, frame):
         now = time.time()
         self.t_image = now
-        front = self.front if now - self.t_scan < 1.0 else None     # 오래된 라이다 값은 쓰지 않는다
-        cmd = self.driver.process(frame, front, now)
+        fresh = now - self.t_scan < 1.0                               # 오래된 라이다 값은 쓰지 않는다
+        front, sides = (self.front, self.sides) if fresh else (None, None)
+        lidar_ok = not self.use_scan or now - self.t_scan < self.cfg.lidar_timeout_sec
+        cmd = self.driver.process(frame, front, now, sides, lidar_ok)
         self.publish(cmd.v, cmd.w)
         self.set_led(self.driver.controller.led)
         self.state_pub.publish(String(data=json.dumps(self.driver.state)))

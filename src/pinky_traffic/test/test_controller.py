@@ -113,8 +113,10 @@ def test_blocked_by_lidar_and_resume():
 def test_blocked_by_yolo_robot_box():
     c = started()
     c.step(lane(), None, 0.1)
-    assert c.step(lane(obstacle=0.9), None, 0.2).state == BLOCKED
-    assert c.step(lane(obstacle=0.0), None, 0.3).state == LANE_FOLLOW
+    assert c.step(lane(obstacle=0.9), None, 0.2).state == LANE_FOLLOW     # 기본: yolo robot 으로는 안 멈춘다 (라이다만)
+    c.cfg.robot_stop = True
+    assert c.step(lane(obstacle=0.9), None, 0.3).state == BLOCKED
+    assert c.step(lane(obstacle=0.0), None, 0.4).state == LANE_FOLLOW
 
 
 def test_estop_and_stop_commands():
@@ -156,3 +158,22 @@ def test_waits_for_lock_then_releases_after_crossing():
     assert c.step(lane(crosswalk=True, y=0.9), None, 5.1).state == CROSSING
     c.step(lane(), None, 7.2)
     assert c.state == LANE_FOLLOW and lock.released >= 1
+
+
+def test_side_guard_steers_away_and_slows():
+    c = started()
+    c.step(lane(), None, 0.1)
+    free = c.step(lane(), None, 0.2, sides=(0.30, 0.30))
+    assert free.reason == '' and free.v > 0                               # 옆 로봇이 멀면 그대로
+    cmd = c.step(lane(), None, 0.3, sides=(0.12, 0.30))                   # 왼쪽으로 밀고 들어온다
+    assert cmd.w < free.w - 0.3 and 0 < cmd.v < free.v and cmd.reason.startswith('side L')
+    cmd = c.step(lane(), None, 0.4, sides=(0.30, 0.07))                   # 오른쪽에 바짝
+    assert cmd.v == 0 and cmd.w > 0                                       # 전진은 멈추고 왼쪽으로 비킨다
+
+
+def test_no_lidar_holds_the_wheels():
+    c = started()
+    c.step(lane(), None, 0.1)
+    cmd = c.step(lane(), None, 0.2, lidar_ok=False)
+    assert cmd.v == 0 and cmd.w == 0 and cmd.reason == 'no lidar' and c.state == LANE_FOLLOW
+    assert c.step(lane(), None, 0.3).v > 0                                # 돌아오면 다시 달린다

@@ -116,6 +116,8 @@ class LaneController:
         self.t_cw_seen = None
         self.last_w = 0.0
         self.last_offset = None             # 직전 프레임의 차선 중심 (한 프레임 튐 거르기)
+        self.side_alert = False             # 옆 물체를 피하는 중
+        self.no_lidar = False
         self.jumps = 0
         self.crossings = 0
         self.in_route = False               # 주차 통로에 들어섰다 (STOP/START 전까지 유지)
@@ -352,7 +354,46 @@ class LaneController:
         self.last_w = w
         return v, w
 
-    def step(self, p: Perception, front_m=None, now=0.0) -> Command:
+    def step(self, p: Perception, front_m=None, now=0.0, sides=None, lidar_ok=True) -> Command:
+        """sides = (왼쪽 거리, 오른쪽 거리) 라이다 측면 최소값 (없으면 None). lidar_ok=False 면 움직이지 않는다."""
+        cfg = self.cfg
+        if not lidar_ok and cfg.require_lidar and self.state not in (IDLE, ESTOP, PARKED):
+            # 라이다가 끊기면 앞의 장애물·옆 로봇을 못 본다 -> 바퀴를 세운다 (상태와 타이머는 그대로 둔다)
+            self.t_last = now
+            if not self.no_lidar:
+                self.events.append((now, 'no lidar -> hold'))
+            self.no_lidar = True
+            return Command(0.0, 0.0, self.state, 'no lidar')
+        self.no_lidar = False
+        cmd = self._step(p, front_m, now)
+        return self._side_guard(cmd, sides, now)
+
+    def _side_guard(self, cmd, sides, now):
+        """옆구리 침범 막기: 측면 side_slow_m 안에 뭔가 있으면 반대쪽으로 조향하고 속도를 줄인다. side_stop_m 안이면 전진은 멈춘다.
+        (2026-10-09: 나란히 달리다 한 대가 차선을 잘못 잡으면 옆 차선으로 밀고 들어온다. 두 대 다 이 규칙으로 서로 비킨다)"""
+        cfg = self.cfg
+        if not cfg.side_guard or not sides or cmd.state not in (LANE_FOLLOW, APPROACH, CROSSING) or cmd.v <= 0 \
+                or self.pocket_mode or self.exiting:
+            self.side_alert = False
+            return cmd
+        push, near = 0.0, None
+        for dist, away in zip(sides, (-1.0, 1.0)):            # 왼쪽에 있으면 오른쪽(-w)으로, 오른쪽에 있으면 왼쪽(+w)으로
+            if dist is not None and dist < cfg.side_slow_m:
+                push += away * min(1.0, (cfg.side_slow_m - dist) / max(1e-3, cfg.side_slow_m - cfg.side_stop_m))
+                near = dist if near is None else min(near, dist)
+        if near is None:
+            self.side_alert = False
+            return cmd
+        if not self.side_alert:
+            self.events.append((now, f'side guard L={sides[0]} R={sides[1]}'))
+        self.side_alert = True
+        w = max(-cfg.w_max, min(cfg.w_max, cmd.w + push * cfg.side_push_w))
+        v = 0.0 if near < cfg.side_stop_m else cmd.v * (1.0 - 0.6 * min(1.0, abs(push)))
+        self.last_w = w
+        side = 'L' if push < 0 else 'R'
+        return Command(v, w, cmd.state, f'side {side} {near:.2f}')
+
+    def _step(self, p: Perception, front_m=None, now=0.0) -> Command:
         cfg = self.cfg
         dt = 0.0 if self.t_last is None else max(0.0, now - self.t_last)
         self.t_last = now
@@ -466,11 +507,11 @@ class LaneController:
 
         # ---- 전방 장애물 (라이다 또는 yolo 'robot') : 어떤 주행 상태보다 우선 ----
         blocked = front_m is not None and front_m < stop_m
-        if p.obstacle_y and p.obstacle_y >= cfg.robot_stop_row:
+        if cfg.robot_stop and p.obstacle_y and p.obstacle_y >= cfg.robot_stop_row:
             blocked = True
         if self.state == BLOCKED:
             cleared = (front_m is None or front_m > cfg.obstacle_stop_m + 0.05) and \
-                      not (p.obstacle_y and p.obstacle_y >= cfg.robot_stop_row - 0.05)
+                      not (cfg.robot_stop and p.obstacle_y and p.obstacle_y >= cfg.robot_stop_row - 0.05)
             if cleared:
                 self._go(self.resume_state, now, 'clear')
             else:

@@ -60,7 +60,20 @@ class Config:
     obstacle_slow_m: float = 0.45
     front_angle_deg: float = 25.0   # 라이다 전방 부채꼴 반각
     lidar_yaw_offset_deg: float = 0.0  # 라이다 0도가 정면이 아니면 보정
-    robot_stop_row: float = 0.80    # yolo 'robot' 박스 아래끝이 이 행을 넘으면 장애물로 본다
+    robot_stop_row: float = 0.80    # yolo 'robot' 박스 아래끝이 이 행을 넘으면 장애물로 본다 (robot_stop 일 때)
+    # 2026-10-09: robot 을 칸 안 시점에서만 학습해 주행 중 카펫·흰 선을 robot(0.5~0.7)으로 보고 멈췄다.
+    # 앞 장애물은 라이다로만 멈추고, yolo robot 은 칸 안에서 상대가 지나갔는지 볼 때만 쓴다 (신뢰도 robot_conf 이상만)
+    robot_stop: bool = False
+    robot_conf: float = 0.8
+    # 옆구리 침범 막기: 라이다 측면(side_angle_from~to 도, 좌우) 최소 거리. 나란히 달릴 때 옆 로봇까지는 보통 이보다 멀다
+    side_guard: bool = True
+    side_angle_from: float = 35.0
+    side_angle_to: float = 110.0
+    side_slow_m: float = 0.15        # 이 안이면 반대쪽으로 조향 + 감속
+    side_stop_m: float = 0.09        # 이 안이면 전진은 멈추고 피하는 회전만
+    side_push_w: float = 0.8         # 피하는 회전 세기 (rad/s, 가까울수록 이만큼까지)
+    require_lidar: bool = True       # 라이다가 lidar_timeout_sec 넘게 안 오면 바퀴를 세운다
+    lidar_timeout_sec: float = 1.5
 
     # ---------- 2대 운용 (coordinator) ----------
     use_coordinator: bool = False   # True: 횡단보도 구간을 대시보드 서버의 락으로 한 대씩만 통과
@@ -220,5 +233,7 @@ TUNABLE = [
     ('sign_advance_m', 0.0, 0.40, 0.01),
     ('sign_turn_deg', 30.0, 150.0, 5.0),
     ('zone_advance_m', 0.0, 0.30, 0.01),
+    ('side_slow_m', 0.0, 0.30, 0.01),
+    ('side_stop_m', 0.0, 0.20, 0.01),
     ('conf', 0.1, 0.9, 0.05),
 ]

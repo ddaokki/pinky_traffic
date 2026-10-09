@@ -108,3 +108,21 @@ def test_robot_mask_from_background_difference():
     ys, xs = np.nonzero(m)
     assert 95 <= xs.min() <= 106 and 174 <= xs.max() <= 186 and ys.max() >= 180
     assert robot_mask(bg, bg) is None                                      # 아무도 없으면 없음
+
+
+def test_side_ranges_from_scan():
+    pytest.importorskip('rclpy')
+    from sensor_msgs.msg import LaserScan
+    from pinky_traffic.nodes.lane_driver import sector_range
+    scan = LaserScan()
+    n = 360
+    scan.angle_min, scan.angle_increment = -math.pi, 2 * math.pi / n
+    scan.range_min, scan.range_max = 0.05, 12.0
+    ranges = [2.0] * n
+    ranges[n // 2 + 70] = 0.12      # 왼쪽 70도
+    ranges[n // 2 - 90] = 0.20      # 오른쪽 90도
+    ranges[n // 2 + 170] = 0.08     # 거의 뒤: 측면 밖
+    scan.ranges = ranges
+    assert sector_range(scan, 35, 110) == pytest.approx(0.12, abs=1e-5)
+    assert sector_range(scan, -110, -35) == pytest.approx(0.20, abs=1e-5)
+    assert sector_range(scan, 35, 110, yaw_offset_deg=180.0) == pytest.approx(0.20, abs=1e-5)   # 라이다가 뒤로 달린 로봇

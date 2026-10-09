@@ -33,6 +33,14 @@ class AutoCheck:
         fps = [(n, (v.get('state') or {}).get('fps') or 0) for n, v in robots.items()]
         if len(fps) >= 2 and all(f >= 8 for _, f in fps):
             out.append(('S-02', 'pass', ' '.join(f'{n} {f}fps' for n, f in fps)))
+        lidar = [(n, (v.get('state') or {}).get('lidar')) for n, v in robots.items()]
+        if len(lidar) >= 2 and all(l is True for _, l in lidar) and \
+                all((v.get('state') or {}).get('front') is not None for v in robots.values()):
+            out.append(('S-04', 'pass', ' '.join(f"{n} front {(v.get('state') or {}).get('front')}" for n, v in robots.items())))
+        if state.get('reason') == 'no lidar':
+            out.append(('S-04', 'fail', f'{name}: 라이다 끊김'))
+        if str(state.get('reason') or '').startswith('side '):
+            out.append(('C-05', 'pass', f"{name}: {state.get('reason')}"))
         if st == 'estop' and prev not in (None, 'idle', 'estop') and state.get('v', 1) == 0:
             out.append(('S-03', 'pass', f'{name}: {prev} -> estop'))
 
