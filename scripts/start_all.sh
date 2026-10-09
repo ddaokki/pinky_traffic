@@ -12,7 +12,7 @@ ROBOTS=(
   "pinky1 192.168.129.199 24 0 true"
   "pinky2 192.168.129.200 23 0 true"
 )
-BACKEND="${BACKEND:-hsv}"     # yolo 로 달리려면: BACKEND=yolo scripts/start_all.sh
+BACKEND="${BACKEND:-hsv}"     # 표지판·로봇을 YOLO 로: BACKEND=hsv+yolo scripts/start_all.sh (models/best.pt)
 SSH_OPTS=(-o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
 
 say()  { echo -e "\n\033[1;36m▶ $*\033[0m"; }
@@ -74,6 +74,8 @@ else
 fi
 
 say "주행 노드 ($BACKEND) — START 를 누르기 전에는 움직이지 않습니다"
+# 이미 떠 있는 주행 노드는 끈다 (두 번 누르면 한 로봇을 두 프로그램이 몰게 된다)
+kill $(pgrep -f "lane_[d]river") 2>/dev/null && sleep 1
 for d in "${DRIVERS[@]}"; do
   read -r NAME DOMAIN LANE <<<"$d"
   gnome-terminal --tab --title="$NAME" -- bash -c \
