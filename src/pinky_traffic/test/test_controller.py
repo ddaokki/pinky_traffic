@@ -177,3 +177,13 @@ def test_no_lidar_holds_the_wheels():
     cmd = c.step(lane(), None, 0.2, lidar_ok=False)
     assert cmd.v == 0 and cmd.w == 0 and cmd.reason == 'no lidar' and c.state == LANE_FOLLOW
     assert c.step(lane(), None, 0.3).v > 0                                # 돌아오면 다시 달린다
+
+
+def test_intrude_demo_drifts_toward_neighbor_and_ignores_own_guard():
+    c = started()
+    c.step(lane(), None, 0.1)
+    c.intrude(+1, 0.1)
+    cmd = c.step(lane(), None, 0.2, sides=(0.30, 0.10))
+    assert cmd.w < -0.3 and cmd.reason == 'intrude'                       # 오른쪽(옆 차선)으로 붙는다, 자기는 안 비킨다
+    cmd = c.step(lane(), None, 4.3, sides=(0.30, 0.10))
+    assert cmd.reason.startswith('side R') and cmd.w > cmd.w - 1          # 4초 뒤에는 다시 비킨다

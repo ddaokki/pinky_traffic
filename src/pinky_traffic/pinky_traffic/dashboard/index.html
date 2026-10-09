@@ -89,12 +89,15 @@ function card(name) {
   el.innerHTML = `<div class="head"><span class="name"></span><span class="badge"></span></div>
     <img alt="디버그 영상"><div class="kv"></div><canvas width="600" height="120"></canvas>
     <div class="row"><button class="go">▶ START</button><button class="s">■ STOP</button><button class="estop">비상정지</button></div>
-    <div class="row lane"><span>놓은 차선</span><button class="l1">1차선 (파란 선 유턴)</button><button class="l2">2차선 (초록 칸)</button><button class="l0">역할 없음</button></div>`;
+    <div class="row lane"><span>놓은 차선</span><button class="l1">1차선</button><button class="l2">2차선</button><button class="l0">역할 없음</button></div>
+    <div class="row lane"><span>시연</span><button class="il">← 끼어들기</button><button class="ir">끼어들기 →</button></div>`;
   el.querySelector('.name').textContent = name;
   el.querySelector('.go').onclick = () => cmd(name, 'start');
   el.querySelector('.s').onclick = () => cmd(name, 'stop');
   el.querySelector('.estop').onclick = () => cmd(name, 'estop');
   for (const n of [0, 1, 2]) el.querySelector('.l' + n).onclick = () => cmd(name, 'lane' + n);
+  el.querySelector('.il').onclick = () => cmd(name, 'intrude_left');      // 달리는 중에 옆 차선 쪽으로 4초 붙기 (옆 로봇이 비키는지 시연)
+  el.querySelector('.ir').onclick = () => cmd(name, 'intrude_right');
   $('robots').appendChild(el);
   return cards[name] = el;
 }

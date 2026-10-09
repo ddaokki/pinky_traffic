@@ -72,6 +72,8 @@ class Config:
     side_slow_m: float = 0.15        # 이 안이면 반대쪽으로 조향 + 감속
     side_stop_m: float = 0.09        # 이 안이면 전진은 멈추고 피하는 회전만
     side_push_w: float = 0.8         # 피하는 회전 세기 (rad/s, 가까울수록 이만큼까지)
+    intrude_offset: float = 0.6      # 시연용 끼어들기: 차선 중심을 이만큼 옆으로 밀어 본다 (약 13cm)
+    intrude_sec: float = 4.0
     require_lidar: bool = True       # 라이다가 lidar_timeout_sec 넘게 안 오면 바퀴를 세운다
     lidar_timeout_sec: float = 1.5
 

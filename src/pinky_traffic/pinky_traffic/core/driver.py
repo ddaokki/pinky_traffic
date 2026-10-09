@@ -70,6 +70,8 @@ class Driver:
                 self.controller.stop(now)
             elif item == 'estop':
                 self.controller.estop(now)
+            elif item in ('intrude_left', 'intrude_right'):
+                self.controller.intrude(1 if item.endswith('right') else -1, now)
             elif item in ('lane0', 'lane1', 'lane2'):
                 # 대시보드의 차선 버튼: 이 로봇을 놓은 차선. 달리는 중에 바꾸면 헷갈리므로 멈추고 바꾼다
                 self.controller.stop(now)

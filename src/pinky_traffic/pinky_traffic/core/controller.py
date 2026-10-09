@@ -117,6 +117,7 @@ class LaneController:
         self.last_w = 0.0
         self.last_offset = None             # 직전 프레임의 차선 중심 (한 프레임 튐 거르기)
         self.side_alert = False             # 옆 물체를 피하는 중
+        self.intrude_dir, self.intrude_until = 0, -1.0   # 시연용 끼어들기 (+1 오른쪽, -1 왼쪽)
         self.no_lidar = False
         self.jumps = 0
         self.crossings = 0
@@ -319,6 +320,12 @@ class LaneController:
                 self._reset_role()
             self._go(LANE_FOLLOW, now, 'start')
 
+    def intrude(self, direction, now=0.0):
+        """시연용: intrude_sec 동안 옆 차선 쪽(+1 오른쪽, -1 왼쪽)으로 붙는다. 옆 로봇이 비키는 것을 보여 주려고 넣었다."""
+        if self.state == LANE_FOLLOW:
+            self.intrude_dir, self.intrude_until = (1 if direction > 0 else -1), now + self.cfg.intrude_sec
+            self.events.append((now, f"intrude {'right' if direction > 0 else 'left'}"))
+
     def stop(self, now=0.0):
         self._release()
         self._junction(False)
@@ -373,7 +380,7 @@ class LaneController:
         (2026-10-09: 나란히 달리다 한 대가 차선을 잘못 잡으면 옆 차선으로 밀고 들어온다. 두 대 다 이 규칙으로 서로 비킨다)"""
         cfg = self.cfg
         if not cfg.side_guard or not sides or cmd.state not in (LANE_FOLLOW, APPROACH, CROSSING) or cmd.v <= 0 \
-                or self.pocket_mode or self.exiting:
+                or self.pocket_mode or self.exiting or now < self.intrude_until:   # 끼어드는 쪽은 안 비킨다 (차선을 잘못 본 로봇 흉내)
             self.side_alert = False
             return cmd
         push, near = 0.0, None
@@ -580,8 +587,11 @@ class LaneController:
                 if front_m is not None and front_m < cfg.obstacle_slow_m:
                     span = max(1e-3, cfg.obstacle_slow_m - stop_m)
                     v_target *= max(0.3, (front_m - stop_m) / span)
+                if now < self.intrude_until:
+                    # 시연용 끼어들기: 차선 중심을 옆으로 밀어 본 것처럼 해서 옆 차선 쪽으로 붙는다
+                    p.offset += self.intrude_dir * cfg.intrude_offset
                 v, w = self._steer(p, dt, v_target)
-                return Command(v, w, LANE_FOLLOW)
+                return Command(v, w, LANE_FOLLOW, 'intrude' if now < self.intrude_until else '')
 
         if self.state == APPROACH:
             if cfg.use_coordinator:
