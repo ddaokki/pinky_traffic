@@ -25,12 +25,13 @@ SIGN_APPROACH = 'sign_approach'    # 파란 표지판 쪽으로 간다
 SIGN_ADVANCE = 'sign_advance'      # 표지판 끝에 도착 -> 곧장 조금 더 가서 표지판 위에 선다
 SIGN_TURN = 'sign_turn'            # 표지판 위에서 제자리 90도 (경로에 적힌 쪽으로)
 SIGN_SEARCH = 'sign_search'        # 다음 표지판을 찾으며 곧장 간다
+POCKET_END = 'pocket_end'          # 초록 선이 보인 뒤 곧장 더 가서 초록 선 위에 선다
 WAIT_EXIT = 'wait_exit'            # 초록 칸에서 돌아선 뒤, 상대 로봇이 지나갈 때까지 기다린다
 
 # LED (r, g, b): 달리는 중 초록, 서 있으면 빨강, 주차 통로 안에서는 통로 색, 주차 완료 초록
 LED_GREEN, LED_RED, LED_BLUE = (0, 255, 0), (255, 0, 0), (0, 0, 255)
 STOPPED_STATES = (IDLE, STOP, BLOCKED, LOST, ESTOP, WAIT_JUNCTION, WAIT_EXIT)
-MANEUVERS = (SIGN_APPROACH, SIGN_ADVANCE, SIGN_TURN, SIGN_SEARCH, PARK_TURN)
+MANEUVERS = (SIGN_APPROACH, SIGN_ADVANCE, SIGN_TURN, SIGN_SEARCH, POCKET_END, PARK_TURN)
 
 
 def parse_plan(text):
@@ -269,8 +270,9 @@ class LaneController:
             hit = self.state == LANE_FOLLOW and p.zone_seen and p.zone_y >= cfg.park_line_row
             self.zone_hits = self.zone_hits + 1 if hit else 0
             if self.zone_hits >= 2:
-                self._go(PARK_TURN, now, f'green y={p.zone_y:.2f}')
-                return Command(0.0, 0.0, PARK_TURN)
+                self.advance = 0.0
+                self._go(POCKET_END, now, f'green y={p.zone_y:.2f}')
+                return Command(cfg.v_min, 0.0, POCKET_END)
             return None
         if not self.plan and not self.pocket_parked:
             first = 'turn' if cfg.lane_role == 1 else 'straight_right'
@@ -358,6 +360,11 @@ class LaneController:
             self._junction(True)                      # 기동 중에도 락을 계속 쥔다 (하트비트)
         if cfg.lane_role == 1 and self.flag_up and not self.cleared:
             self._flag(True)
+        if self.state == POCKET_END:
+            self.advance += cfg.v_min * dt
+            if self.advance < cfg.zone_advance_m:
+                return Command(cfg.v_min, 0.0, POCKET_END)
+            self._go(PARK_TURN, now, f'on green +{self.advance:.2f}m')
         if self.state == PARK_TURN:
             # 각도 센서 없이 시간으로 돈다: 각도 / 회전 속도
             if now - self.t_state >= math.radians(cfg.park_turn_deg) / max(0.1, cfg.park_turn_w):
@@ -381,21 +388,30 @@ class LaneController:
             self.pid.reset()
             self._go(LANE_FOLLOW, now, 'exit pocket (robot passed)' if passed else 'exit pocket (flag down)')
         if self.state == SIGN_APPROACH:
-            # 표지판 가운데를 보고 천천히 간다. 먼 쪽 끝이 sign_stop_row 까지 오면 도착
+            # 표지판 가운데를 보고 천천히 간다. 화면 아래로 완전히 사라질 때까지(= 표지판 위에 올라탈 때까지) 간 뒤 꺾는다.
+            # (2026-10-09 현장 요청: 보이자마자 꺾으면 차선을 넘는다)
             sign = self._wanted_sign(p)
             if sign is not None:
                 self.target, self.t_target = sign, now
-            elif now - self.t_target > cfg.lost_timeout_sec:
-                if self.target[2] < cfg.sign_stop_row - 0.25:     # 멀리서 놓쳤다 -> 다시 찾기
+            arrived = False
+            if sign is None:
+                gone = now - self.t_target
+                if self.target[3] >= cfg.sign_gone_row:            # 화면 아래로 빠져나갔다
+                    arrived = gone >= cfg.sign_gone_sec
+                    if not arrived:
+                        return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'over sign')
+                elif gone > cfg.lost_timeout_sec:                   # 멀리서 놓쳤다 -> 다시 찾기
                     self._go(SIGN_SEARCH if self.plan_i or self.exiting else LANE_FOLLOW, now, 'sign lost')
                     self.t_mode = now
                     return Command(0.0, 0.0, self.state)
-                sign = self.target                                 # 발밑으로 들어갔다 = 도착
-            if sign is not None and sign[2] >= cfg.sign_stop_row:
+            if arrived:
                 self.exiting = False
                 wait = self._arrived(now)
                 if wait is not None:
                     return wait
+            elif self.plan_name == 'plan_lane2_exit' and self.plan_i == 0:
+                # 칸에서 나올 때: 입구의 직우 표지판은 왼쪽으로 길게 보여 가운데를 보고 가면 칸 벽 선을 넘는다 -> 곧장 나간다
+                return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'exit straight')
             else:
                 x = self.target[1]
                 v, w = self._steer(Perception(ok=True, offset=x), dt, cfg.v_min)

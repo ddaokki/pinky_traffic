@@ -102,9 +102,12 @@ class Config:
     plan_lane1: str = 'turn:right, turn:right, straight_right:straight'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진
     plan_lane2: str = 'straight_right:straight, turn:left, turn:left'      # 2차선, 상대가 안 온다: S 직진 -> 좌 -> 좌 (=유턴, 1차선으로)
     plan_lane2_pocket: str = 'straight_right:right'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
-    plan_lane2_exit: str = 'turn:right, turn:left, turn:left'              # 칸에서 나와: 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
-    sign_stop_row: float = 0.80      # 표지판의 먼 쪽 끝이 이 행까지 오면 '도착' (긴 직우 표지판은 끝(가지)까지 가서 판단한다)
-    sign_advance_m: float = 0.12     # 도착한 뒤 곧장 더 가서 표지판 위에 선다 (카메라 앞 10cm 는 안 보인다)
+    plan_lane2_exit: str = 'any:right, turn:left, turn:left'               # 칸에서 나와: 입구의 표지판(직우 가지)에서 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
+    sign_stop_row: float = 0.80      # (2026-10-09 부터 안 씀) 예전: 표지판 먼 끝이 이 행에 오면 도착
+    # 표지판을 따라가다 화면에서 완전히 사라지면 '도착' (가까운 끝이 sign_gone_row 아래까지 왔다가 sign_gone_sec 동안 안 보임)
+    sign_gone_row: float = 0.85
+    sign_gone_sec: float = 0.3
+    sign_advance_m: float = 0.05     # 도착(사라짐) 뒤 곧장 더 가는 거리. 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
@@ -113,6 +116,9 @@ class Config:
     # 색으로 찾을 때는 종류를 정하지 않고('blue') 가장 가까운 표지판을 경로의 다음 표지판으로 본다. 종류 구분은 YOLO 가 한다.
     sign_shape: bool = False
     # 햇빛이 비친 파란 테이프는 S 25 안팎, V 220 으로 하얗게 뜬다 (카펫은 H 55 근처라 색상으로 갈린다). 밝은 곳에서 이 범위도 파랑으로 본다
+    # 2026-10-09: 초록 선이 park_line_row(0.80)에 오면 카메라 앞 약 14cm 다 (높이 6.5cm, 8도 숙임).
+    # 거기서 바로 돌면 칸 입구에 너무 가까워 지나가는 로봇이 화면을 꽉 채운다 -> 이만큼 더 가서 초록 선 위에서 돈다
+    zone_advance_m: float = 0.12
     blue_glare_lo: List[int] = field(default_factory=lambda: [88, 18, 170])
     blue_glare_hi: List[int] = field(default_factory=lambda: [130, 255, 255])
 
@@ -204,8 +210,9 @@ TUNABLE = [
     ('park_stop_m', 0.05, 0.40, 0.01),
     ('park_line_row', 0.55, 0.95, 0.01),
     ('park_turn_deg', 0.0, 360.0, 5.0),
-    ('sign_stop_row', 0.40, 1.00, 0.02),
+    ('sign_gone_row', 0.50, 1.00, 0.02),
     ('sign_advance_m', 0.0, 0.40, 0.01),
     ('sign_turn_deg', 30.0, 150.0, 5.0),
+    ('zone_advance_m', 0.0, 0.30, 0.01),
     ('conf', 0.1, 0.9, 0.05),
 ]
