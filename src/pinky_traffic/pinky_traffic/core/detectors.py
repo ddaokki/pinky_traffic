@@ -89,6 +89,7 @@ class HsvDetector:
         self.signs = []                  # 파란 표지판 (lane_role 일 때)
         self.angles = []                 # 파란 덩어리 축 각도 [(x, 오차)] (표지판 정렬)
         self.objects = []                # 인식한 물체 [(이름, 신뢰도|None, 마스크)] (발표용 그림)
+        self.not_sign = None             # 표지판으로 보지 않을 영역 (YOLO 가 본 로봇)
         self.cw_prev = False             # 직전 프레임에 횡단보도를 봤다
         self.follow_zone = False         # 제어기가 정한다: 칸 안에서는 초록 선 가운데를 보고 간다
         self.zone_x = 0.0                # 초록 선 가운데의 가로 위치 (-1 왼쪽 .. 1 오른쪽)
@@ -119,6 +120,8 @@ class HsvDetector:
                   max(8, 0.015 * np.count_nonzero(labels == i))]
         mask = np.where(np.isin(labels, seeded), 255, 0).astype(np.uint8)
         mask[:int(cfg.roi_top * frame.shape[0])] = 0
+        if self.not_sign is not None and self.not_sign.shape == mask.shape:
+            mask[self.not_sign > 0] = 0          # YOLO 가 로봇으로 본 자리의 파랑(바퀴·테이프)은 표지판이 아니다
         return mask
 
     def local_bright_mask(self, frame):
@@ -346,6 +349,15 @@ class HybridDetector(HsvDetector):
                 if float((blue & area).sum()) / max(1, int(area.sum())) >= cfg.sign_blue_frac:
                     keep.append((sign, obj))
             objects = [o for o in objects if o[0] not in SIGNS] + [o for _, o in keep]
+            # 상대 로봇의 파란 바퀴·테이프를 색 표지판으로 잡지 않게, 로봇으로 본 영역(넉넉히 넓혀서)을 기억해 둔다
+            # (2026-10-10 pinky2: 1차선 로봇의 바퀴를 표지판으로 보고 다가감)
+            robot = np.zeros((h, w), np.uint8)
+            for name, conf, m in objects:
+                if name == 'robot' and (conf is None or conf >= cfg.robot_mask_conf):
+                    x, y, bw, bh = cv2.boundingRect(m)
+                    px, py = int(bw * cfg.robot_mask_pad), int(bh * cfg.robot_mask_pad)
+                    robot[max(0, y - py):min(h, y + bh + py), max(0, x - px):min(w, x + bw + px)] = 255
+            self.not_sign = robot if robot.any() else None
             self.last = (sorted([s for s, _ in keep], key=lambda s: -s[3]), objects, obstacle_y)
         self.n += 1
         masks, found = self.masks(frame)
