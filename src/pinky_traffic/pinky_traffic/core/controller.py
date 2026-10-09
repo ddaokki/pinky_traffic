@@ -245,9 +245,11 @@ class LaneController:
         searching = self.state == SIGN_SEARCH or self.exiting
         if searching and not self.exiting and self.backoff_run > 0:
             # 물러나서 다시 본 바로 앞 표지판이 다음 표지판이다. 옆에서 본 화살표는 길쭉해 모양 분류가 틀리므로 종류를 안 따진다
-            front = [s for s in p.signs if abs(s[1]) <= self.cfg.sign_arrive_x and s[3] >= self.cfg.sign_gone_row]
+            # 물러난 뒤에는 표지판이 화면 위로 조금 올라가 있다 (2026-10-10: 가까운 끝 0.85 기준에 못 미쳐 오른쪽 먼 표지판을 골라 그쪽으로 돎)
+            # -> 화면 가운데 쪽(|x| <= sign_arrive_x)에서 가장 가까운(아래) 것
+            front = [s for s in p.signs if abs(s[1]) <= self.cfg.sign_arrive_x and s[3] >= self.cfg.sign_start_row]
             if front:
-                return min(front, key=lambda s: abs(s[1]))
+                return max(front, key=lambda s: s[3])
         if searching and not self.exiting:
             # 직전 회전 뒤 이미 발밑까지 지난 옆 표지판을 다음 순번으로 잡으면
             # 접근 없이 즉시 또 회전한다. 다음 표지판은 아직 도착선보다 앞에 있어야 한다.

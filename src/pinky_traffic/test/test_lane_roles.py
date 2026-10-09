@@ -891,3 +891,13 @@ def test_tracking_does_not_jump_from_near_sign_to_distant_one():
     p = see(signs=[('blue', 0.28, 0.40, 0.53)])
     assert c._wanted_sign(p, tracking=True) is None
     assert c.step(p, 1.0, 0.2).v == 0
+
+
+def test_after_backoff_picks_near_front_sign_not_far_side_one():
+    # 2026-10-10 pinky1: 9cm 물러난 뒤 R2 가 왼쪽 아래(가까운 끝 0.84)에 보였는데 오른쪽 먼 표지판(turn 분류)을 골라 오른쪽으로 돎
+    c = started(lane_role=1, **SIGN)
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('turn', 'right'), ('turn', 'right')], [None] * 2, 1, 'plan_lane1'
+    c._go(SIGN_SEARCH, 0.0)
+    c.backoff_run = 0.09
+    p = see(signs=[('straight_right', -0.25, 0.64, 0.84), ('turn', 0.87, 0.56, 0.70)])
+    assert c._wanted_sign(p)[1] == -0.25
