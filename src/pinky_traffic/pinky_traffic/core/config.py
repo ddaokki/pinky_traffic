@@ -79,7 +79,7 @@ class Config:
     side_wall_len: float = 0.30      # 그쪽 옆(5~170도) 0.25m 안의 점들이 이 길이 이상 이어지면 벽(무시), 짧으면 로봇 (로봇 폭 약 11cm)
     intrude_offset: float = 0.6      # 시연용 끼어들기: 차선 중심을 이만큼 옆으로 밀어 본다 (약 13cm)
     intrude_sec: float = 4.0
-    hold_front_m: float = 0.15       # 어떤 상태든 앞이 이보다 가까우면 전진만 멈춘다 (표지판 기동·칸 안 포함)
+    hold_front_m: float = 0.10       # 어떤 상태든 앞이 이보다 가까우면 전진만 멈춘다 (표지판 기동·칸 안 포함)
     require_lidar: bool = True       # 라이다가 lidar_timeout_sec 넘게 안 오면 바퀴를 세운다
     lidar_timeout_sec: float = 1.5
 
@@ -138,6 +138,7 @@ class Config:
     sign_start_row: float = 0.55     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다)
     sign_search_row: float = 0.40    # 표지판을 지나 다음 표지판을 찾으며 곧장 가는 중에는 이 행부터
     sign_max_x: float = 0.45         # 화면 가운데에서 이 범위 안(내 차선 앞)의 표지판만 (옆 차선 표지판 무시)
+    sign_cw_block_row: float = 0.45  # 표지판 가까운 끝이 이 행 아래로 보이면 횡단보도 검출을 끈다 (표지판 우선)
     sign_long_ratio: float = 3.0     # sign_shape 일 때: 파란 덩어리의 긴 변/짧은 변이 이 이상이면 직우(긴 화살표), 아니면 우회전 양방향
     # 2026-10-09 현장: 카메라가 낮아(6.5cm) 바닥 표지판이 납작하게 보여 우회전 표지판도 길쭉하다 -> 모양 구분이 틀린다.
     # 색으로 찾을 때는 종류를 정하지 않고('blue') 가장 가까운 표지판을 경로의 다음 표지판으로 본다. 종류 구분은 YOLO 가 한다.

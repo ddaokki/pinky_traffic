@@ -460,3 +460,11 @@ def test_green_blob_is_not_the_zone_bar():
     cv2.line(img, (95, 190), (225, 190), GREEN, 10)                       # 가로 띠
     p, _, _ = HsvDetector(Config(lane_role=2)).detect(img)
     assert p.zone_seen
+
+
+def test_near_sign_wins_over_crosswalk():
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    p = see(crosswalk=True, crosswalk_y=0.66, signs=[('blue', 0.14, 0.45, 0.62)])
+    cmd = c.step(p, 1.0, 0.2)
+    assert cmd.state == SIGN_APPROACH                                     # 횡단보도가 아니라 표지판으로

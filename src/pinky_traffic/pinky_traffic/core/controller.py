@@ -512,6 +512,13 @@ class LaneController:
             if now - self.t_state < math.radians(cfg.sign_turn_deg) / max(0.1, cfg.park_turn_w):
                 return Command(0.0, -cfg.park_turn_w if self.action == 'right' else cfg.park_turn_w, SIGN_TURN)
             self._maneuver_done(now)
+        if cfg.lane_role and any(s[3] >= cfg.sign_cw_block_row for s in p.signs):
+            # 표지판이 가까이 보이면 횡단보도가 아니다 (2026-10-09 pinky1: R1 바로 앞의 흰 점들을 횡단보도로 보고
+            # 정지·통과하는 동안 표지판 처리를 못 해 그냥 지나가 흰 선 따라 좌회전)
+            p.crosswalk = False
+            if self.state == APPROACH:
+                self._release()
+                self._go(LANE_FOLLOW, now, 'sign over crosswalk')
         if cfg.lane_role and self.state in (LANE_FOLLOW, SIGN_SEARCH):
             wait = self._role_step(p, now, dt)
             if wait is not None:
