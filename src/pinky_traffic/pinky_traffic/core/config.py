@@ -229,6 +229,7 @@ class Config:
     # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)
     lane_wall_width: float = 0.30
     lane_wall_rows: float = 0.12
+    wall_blob_top: float = 0.10      # 덩어리 위 끝이 ROI 위 경계에서 이 안에 있을 때만 벽 후보
     wall_blob_h: float = 0.30        # 흰 덩어리가 이만큼 키가 크고 (횡단보도 줄무늬 0.24~0.28)
     wall_blob_area: float = 0.05     # 영상의 이 비율보다 넓고 (줄무늬 0.03, 가벽 0.06~0.22)
     wall_blob_fill: float = 0.45     # 자기 상자를 이만큼 채우면 벽의 면 (비스듬한 차선 테이프는 0.3 아래)

@@ -252,7 +252,10 @@ def is_wall(box_mask, cfg, w, h, top=0):
     """
     bh, bw = box_mask.shape[:2]
     area = int(np.count_nonzero(box_mask))
-    if bh >= cfg.wall_blob_h * h and area >= cfg.wall_blob_area * w * h and area >= cfg.wall_blob_fill * bw * bh:
+    # 벽은 화면 위쪽(ROI 위 경계 근처)에서 시작한다. 발 앞에서 시작하는 굵은 덩어리는 가까운 차선이다
+    # (2026-10-10: 발 앞의 굵은 차선이 벽으로 지워짐 / 규칙을 끄자 트랙 바깥 낮은 벽이 차선으로 잡힘)
+    if top <= (cfg.roi_top + cfg.wall_blob_top) * h and bh >= cfg.wall_blob_h * h \
+            and area >= cfg.wall_blob_area * w * h and area >= cfg.wall_blob_fill * bw * bh:
         # 크고 꽉 찬 덩어리 = 가까이 붙은 흰 가벽의 면 (테이프는 가늘다). 위가 그늘져 ROI 위 경계에 안 닿아도 벽이다
         # (2026-10-09 pinky2: 횡단보도 옆에 세운 가벽 밑면을 차선·횡단보도로 봤다)
         return True
