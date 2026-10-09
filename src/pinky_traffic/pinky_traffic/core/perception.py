@@ -127,10 +127,12 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
             if not cw_now:
                 memory.width[i] = 0.7 * memory.width.get(i, width) + 0.3 * width
             centers[i] = ((lx + rx) / 2.0, y)
+        # 한쪽 선만 보일 때는 폭을 single_line_width 까지만 쓴다: 가운데를 너무 멀리 잡으면 그 선이 화면 밖으로 나갈 때까지 꺾어 선을 잃는다
+        # (2026-10-10 pinky2: 마지막 좌회전 뒤 중앙선만 보고 급우회전 -> lost). 이 값이면 선을 화면 한쪽(가장자리에서 약 15%)에 두고 따라간다
         elif lx is not None:
-            centers[i] = (lx + max(floor_w, memory.width.get(i, default_w)) / 2.0, y)
+            centers[i] = (lx + min(cfg.single_line_width * w, max(floor_w, memory.width.get(i, default_w))) / 2.0, y)
         elif rx is not None:
-            centers[i] = (rx - max(floor_w, memory.width.get(i, default_w)) / 2.0, y)
+            centers[i] = (rx - min(cfg.single_line_width * w, max(floor_w, memory.width.get(i, default_w))) / 2.0, y)
 
     p.left_seen = len(p.left_pts) >= 2
     p.right_seen = len(p.right_pts) >= 2
@@ -199,6 +201,9 @@ def split_lane_mask(lane_mask, cfg, memory: LaneMemory, separate_crosswalk=False
     stripes = np.zeros_like(lane_mask)
     n, labels, stats, _ = cv2.connectedComponentsWithStats(lane_mask, connectivity=8)
     ref = memory.center_near if memory.center_near is not None else w / 2.0
+    # 좌우를 가르는 기준이 화면 밖으로 밀려 있으면 오른쪽 선까지 전부 '왼쪽'이 된다 -> 화면 가운데 근처로 묶는다
+    # (2026-10-10 pinky2: 한쪽 선만 보고 가운데를 화면 밖 오른쪽으로 잡은 뒤, 오른쪽 선을 왼쪽 선으로 보고 더 꺾음)
+    ref = min(max(ref, 0.3 * w), 0.7 * w)
     min_area = cfg.min_area * w * h
     stripe_boxes = []
     for i in range(1, n):
