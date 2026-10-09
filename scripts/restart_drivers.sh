@@ -3,7 +3,7 @@
 #   scripts/restart_drivers.sh            # pinky1=1차선, pinky2=2차선
 WS="$(cd "$(dirname "$0")/.." && pwd)"
 kill -INT $(pgrep -f "install/pinky_traffic/lib/pinky_traffic/lane_[d]river") 2>/dev/null; sleep 2
-for s in $(pgrep -f gnome-terminal-server); do
+for s in $(pgrep -x gnome-terminal-); do   # 이름으로만 찾는다 (-f 는 이 스크립트를 부른 셸까지 잡는다)
   for c in $(pgrep -P "$s"); do
     cmd="$(ps -o cmd= -p "$c")"
     [[ "$cmd" == *dashboard* ]] && continue

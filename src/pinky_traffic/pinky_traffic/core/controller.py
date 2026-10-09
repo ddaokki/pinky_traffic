@@ -530,6 +530,12 @@ class LaneController:
             if now - self.t_mode < cfg.sign_search_sec:
                 self.t_seen = now
                 return Command(cfg.v_min, 0.0, self.state, 'look for sign')
+            if cfg.lane_role == 1 and self.plan_i < len(self.plan) and self.plan[self.plan_i][1] == 'straight':
+                # 1차선의 마지막 직우(곧장 지나가기만 한다)는 못 찾아도 멈추지 않고 그대로 곧장 나간다 (lane1_exit_m)
+                self.events.append((now, 'S not found -> straight out'))
+                self.plan_i, self.plan_done, self.t_mode = len(self.plan), True, now
+                self._go(LANE_FOLLOW, now, 'plan done (no S)')
+                return None
             # 표지판을 못 찾은 채 흰 차선을 따라가면 잘못된 분기에서 이탈한다.
             # 경로와 깃발을 유지하고 정지한다.
             self.events.append((now, f'sign not found ({self.plan_name}): {self.plan_text}'))

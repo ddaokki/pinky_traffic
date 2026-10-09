@@ -924,3 +924,13 @@ def test_backoff_also_for_sign_cut_at_bottom_corner():
     c.action = 'right'
     cmd = c.step(see(signs=[('straight_right', 0.8, 0.85, 1.0)]), 1.0, 0.1)
     assert cmd.v < 0
+
+
+def test_lane1_last_straight_sign_missing_goes_straight_out():
+    # 1차선의 마지막 직우(곧장 지나가기)는 못 찾아도 sign_hold 로 멈추지 않고 곧장 나간다
+    c = started(lane_role=1, **dict(SIGN, plan_lane1='turn:right, turn:right, any:straight', lane1_exit_m=0.2, sign_search_sec=4.0))
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
+    cmd, t = through(c, AT_T, FAR_T, t, 'right')
+    cmd, t = run(c, see(), t, t + 4.5)
+    assert c.plan_done and c.state == LANE_FOLLOW and cmd.reason == 'straight out'
