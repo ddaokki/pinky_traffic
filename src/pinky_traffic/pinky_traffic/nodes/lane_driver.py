@@ -28,6 +28,7 @@ from std_msgs.msg import String
 from ..core.config import Config
 from ..core.controller import LED_RED, PARKED
 from ..core.driver import Driver
+from ..core.retention import prune_frames
 
 
 def front_range(scan: LaserScan, half_angle_deg, yaw_offset_deg=0.0):
@@ -55,8 +56,10 @@ class LaneDriverNode(Node):
         self.declare_parameter('dashboard_url', '')
         self.declare_parameter('autostart', False)
         self.declare_parameter('image_timeout', 0.7)
-        self.declare_parameter('lane', 0)            # 1 = 1차선(파란 선 유턴), 2 = 2차선(초록 칸). 0 이면 yaml 의 lane_role
-        self.declare_parameter('record', True)       # runs/frames_<시각>/ 에 카메라 화면 저장 (실행한 폴더 기준)
+        self.declare_parameter('lane', 0)            # 1 = 1차선, 2 = 2차선 (표지판 경로). 0 이면 yaml 의 lane_role
+        self.declare_parameter('record', True)       # runs/frames_<시각>_<로봇>/ 에 카메라 화면 저장 (실행한 폴더 기준)
+        self.declare_parameter('keep_days', 7.0)     # 켤 때 이보다 오래된 frames_ 폴더는 지운다 (폴더에 KEEP 파일이 있으면 남김)
+        self.declare_parameter('keep_gb', 20.0)      # 그래도 frames_ 합계가 이보다 크면 오래된 것부터 지운다
         self.declare_parameter('use_led', True)      # 로봇에서 ros2 run pinky_led led_server 가 떠 있어야 켜진다
         get = lambda name: self.get_parameter(name).value
 
@@ -64,7 +67,10 @@ class LaneDriverNode(Node):
         if get('lane'):
             overrides['lane_role'] = int(get('lane'))
         self.cfg = Config.load(get('config') or None, **overrides)
-        record_dir = time.strftime('runs/frames_%Y%m%d_%H%M%S') if get('record') else None
+        record_dir = None
+        if get('record'):
+            prune_frames('runs', float(get('keep_days')), float(get('keep_gb')), log=self.get_logger().info)
+            record_dir = time.strftime('runs/frames_%Y%m%d_%H%M%S_') + get('robot')
         self.driver = Driver(self.cfg, get('robot'), get('use_dashboard'), get('autostart'),
                              log=lambda text: self.get_logger().info(text), record_dir=record_dir)
         self.bridge = CvBridge()
