@@ -240,7 +240,7 @@ class Config:
     wall_base_px: int = 8            # 그 띠의 두께 (px)
     lane2_start_delay_sec: float = 0.0   # START 를 받은 2차선 로봇이 이만큼 기다렸다 출발 (현장은 field.yaml 에서 3초: 1차선이 먼저 진입하게)
     yolo_show_conf: float = 0.8      # 대시보드 화면에는 이 신뢰도 이상의 YOLO 인식만 그린다
-    robot_mask_conf: float = 0.5     # YOLO 'robot' 이 이 신뢰도 이상이면 그 영역의 파랑은 표지판에서 뺀다
+    robot_mask_conf: float = 2.0     # YOLO 'robot' 이 이 신뢰도 이상이면 그 영역의 파랑은 표지판에서 뺀다
     robot_mask_pad: float = 0.25     # 로봇 박스를 가로·세로 이 비율만큼 넓혀서 뺀다
     pocket_late_sec: float = 2.0     # 2차선: 직우를 직진으로 지난 뒤 이 시간 안에 1차선 신호가 오면 그 자리에서 우회전해 칸으로
     return_prefer: str = ''          # 유턴해서 돌아오는 길, 횡단보도를 건넌 뒤 따라갈 쪽 선 ('left'|'right'|''). 현장은 field.yaml 에서 left
