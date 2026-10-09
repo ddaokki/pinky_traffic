@@ -199,7 +199,9 @@ def through(c, near_p, far_p, t, action, clock=None, flag=None):
     cmd = step(see(), t + 0.6)
     assert cmd.state == SIGN_TURN and cmd.v == 0 and (cmd.w < 0 if action == 'right' else cmd.w > 0)
     cmd = step(see(), t + 2.6)                                            # 0.5 + 90도 / 0.8 = 2.46초
-    return cmd, t + 2.6
+    assert cmd.state == SIGN_TURN and cmd.v == 0 and cmd.w == 0           # 돈 뒤에도 멈춰서 다음 표지판을 본다 (0.8초)
+    cmd = step(see(), t + 3.4)
+    return cmd, t + 3.4
 
 
 def test_lane1_route_right_right_straight_then_lanes():
@@ -365,7 +367,7 @@ def test_two_robots_pass_each_other_at_pocket():
     ca, cb = tick(see(), see(), 4)                                          # 둘 다 표지판 위
     assert ca.state == WAIT_JUNCTION and ca.v == 0                         # 1차선은 R1 위에서 기다린다 (2차선이 아직 칸 밖)
     assert b.plan_name == 'plan_lane2_pocket'                              # 2차선은 깃발을 보고 칸으로
-    ca, cb = tick(see(), see(), 60)                                         # 2차선: 더 감 + 멈춤 + 우회전
+    ca, cb = tick(see(), see(), 68)                                         # 2차선: 더 감 + 멈춤 + 우회전 + 멈춤
     assert b.pocket_mode and ca.state == WAIT_JUNCTION
     tick(see(), see(zone_seen=True, zone_y=0.85), 2)
     ca, cb = tick(see(), see(), 32)                                         # 초록 선 위까지
@@ -496,23 +498,43 @@ def test_plan_step_can_have_its_own_advance():
 
 
 def test_lane2_turns_in_place_until_straight_right_sign_looks_straight():
-    # 2026-10-09 pinky2: 코너를 넓게 돌아 직우 표지판에 비스듬히 들어갔다 -> 축이 바로 보일 때까지 제자리에서 돈다
-    c = started(lane_role=2, sign_align_deg=10.0, **SIGN)
+    # 2026-10-09 pinky2: 코너를 넓게 돌아 직우 표지판에 비스듬히 들어갔다 -> 바로 앞에서 멈추고 축이 정면으로 보일 때까지 돈다
+    c = started(lane_role=2, sign_align_deg=8.0, **SIGN)
     c.step(see(), 1.0, 0.1)
     c.step(FAR_S, 1.0, 0.2)
     assert c.state == SIGN_APPROACH
-    tilted = see(signs=[('blue', 0.1, 0.5, 0.7)], sign_angles=[(0.1, 30.0), (-0.8, -40.0)])
-    cmd = c.step(tilted, 1.0, 0.3)
-    assert cmd.v == 0 and cmd.w < 0                                      # 축이 오른쪽으로 기울었다 -> 오른쪽으로 돈다
-    cmd = c.step(see(signs=[('blue', 0.1, 0.5, 0.7)], sign_angles=[(0.1, -25.0)]), 1.0, 0.4)
+    far = see(signs=[('blue', -0.3, 0.5, 0.7)], sign_angles=[(-0.3, 30.0)])
+    cmd = c.step(far, 1.0, 0.3)
+    assert cmd.v > 0 and cmd.w > 0                                       # 아직 멀다: 표지판 쪽으로 (왼쪽)
+    close = lambda err: see(signs=[('blue', -0.1, 0.3, 0.9)], sign_angles=[(-0.1, err), (0.8, -40.0)])
+    cmd = c.step(close(30.0), 1.0, 0.4)
+    assert cmd.v == 0 and cmd.w < 0                                      # 바로 앞: 멈추고, 축이 오른쪽으로 기울었다 -> 오른쪽으로 돈다
+    cmd = c.step(close(-25.0), 1.0, 0.5)
     assert cmd.v == 0 and cmd.w > 0
-    cmd = c.step(see(signs=[('blue', 0.1, 0.5, 0.7)], sign_angles=[(0.1, 4.0)], offset=0.5), 1.0, 0.5)
-    assert cmd.v > 0 and cmd.w == 0                                      # 맞았다 -> 차선 말고 그 방향으로 곧장
-    c2 = started(lane_role=2, sign_align_deg=10.0, sign_align_sec=1.0, **SIGN)
+    cmd = c.step(close(4.0), 1.0, 0.6)
+    assert cmd.v > 0 and cmd.w == 0 and c.aligned                        # 맞았다 -> 그 방향으로 곧장
+    cmd = c.step(close(30.0), 1.0, 0.7)
+    assert cmd.v > 0 and cmd.w == 0                                      # 한 번 맞추면 다시 돌지 않는다
+    c2 = started(lane_role=2, sign_align_deg=8.0, sign_align_sec=1.0, **SIGN)
     c2.step(see(), 1.0, 0.1)
     c2.step(FAR_S, 1.0, 0.2)
-    cmd, _ = run(c2, tilted, 0.2, 1.6)
+    cmd, _ = run(c2, close(30.0), 0.2, 1.6)
     assert cmd.v > 0                                                     # 끝내 못 맞추면 그냥 간다
+
+
+def test_waiting_on_sign_does_not_approach_again():
+    # 2026-10-09 pinky1: R1 위에서 2차선을 기다리다 표지판이 옆에 다시 잡혀 다가가다 놓치고 R1 을 건너뜀
+    clock = Clock()
+    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **POCKET)
+    clock.mgr.raise_flag('lane2', 'b', True)
+    run_flag(a, clock, see(), 0.1)
+    run_flag(a, clock, FAR_T, 0.2)
+    run_flag(a, clock, sign('turn', far=0.85, near=1.0), 0.3)
+    cmd = run_flag(a, clock, see(), 0.8)
+    assert cmd.state == WAIT_JUNCTION and cmd.v == 0
+    clock.mgr.raise_flag('lane2', 'b', True)
+    cmd = run_flag(a, clock, sign('turn', x=0.7, far=0.6, near=0.95), 1.5)   # 기다리는 동안 표지판이 옆에 다시 보인다
+    assert cmd.state == WAIT_JUNCTION and cmd.v == 0 and a.state == SIGN_APPROACH
 
 
 def test_shaft_angle_from_blue_mask():
@@ -537,3 +559,21 @@ def test_lane1_giving_up_keeps_flag_until_clear():
     assert a.plan_done and a.state == LANE_FOLLOW and clock.mgr.flags_of_others('b') == ['oncoming']
     run_flag(a, clock, see(), clock.t + 8.2)
     assert a.cleared and clock.mgr.flags_of_others('b') == []
+
+
+def test_lane_width_not_learned_on_crosswalk_and_near_not_narrower_than_far():
+    # 2026-10-09 pinky2: 횡단보도 줄무늬로 좁은 폭을 배워, 지나간 뒤 오른쪽 선만 보일 때 그 선 위를 달렸다
+    from pinky_traffic.core.perception import LaneMemory, lane_from_masks
+    cfg = Config()
+    mem = LaneMemory()
+    left, right, cw = (np.zeros((H, W), np.uint8) for _ in range(3))
+    cv2.line(left, (140, H - 1), (150, 100), 255, 8)                     # 줄무늬 두 개 (좁다)
+    cv2.line(right, (180, H - 1), (170, 100), 255, 8)
+    cw[150:230, 100:220] = 255
+    lane_from_masks(left, right, cw, cfg, mem, True)
+    assert mem.width == {}                                               # 횡단보도 위에서는 안 배운다
+    mem.width = {0: 60.0, 5: 200.0}                                      # 가까운 행이 잘못 좁게 배워졌다
+    only_right = np.zeros((H, W), np.uint8)
+    cv2.line(only_right, (165, H - 1), (200, 100), 255, 8)
+    p = lane_from_masks(np.zeros((H, W), np.uint8), only_right, None, cfg, mem)
+    assert p.offset < -0.4                                               # 오른쪽 선의 왼쪽(차선 안쪽)을 목표로

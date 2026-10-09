@@ -79,6 +79,10 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
 
     rows = np.linspace(cfg.near_row, cfg.far_row, cfg.n_rows)
     centers = {}
+    # 횡단보도 위에서는 차선폭을 배우지 않는다: 줄무늬 두 개를 좌우 선으로 보고 좁은 폭을 배우면, 지나간 뒤
+    # 오른쪽 선만 보일 때 그 선을 차선 가운데로 잡고 선 위를 달린다 (2026-10-09 pinky2: 횡단보도 뒤 오른쪽 선을 물고 주행)
+    cw_now = crosswalk is not None and (crosswalk_found if crosswalk_found is not None else
+                                        cv2.countNonZero(crosswalk) >= cfg.crosswalk_min_area * w * h)
     # 차선폭(px)은 원근 때문에 행에 대해 직선으로 변한다. 두 선이 같이 보였던 행들로 직선을 맞춰 두면
     # 한쪽 선만 보이는 행(가까운 행은 보통 그렇다)의 폭을 추정할 수 있다.
     fit = None
@@ -96,6 +100,10 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
         default_w = ((1 - t) * cfg.lane_width_near + t * cfg.lane_width_far) * w
         if fit is not None and i not in memory.width:
             default_w = max(0.1 * w, float(np.polyval(fit, frac)))
+        # 가까운 행의 폭은 먼 행보다 좁을 수 없다 (원근). 잘못 배운 좁은 폭을 이걸로 막는다
+        # (2026-10-09 pinky2: 가까운 행이 164px 로 배워져 오른쪽 선만 보일 때 그 선 위를 달렸다)
+        farther = [v for j, v in memory.width.items() if j > i]
+        floor_w = max(farther) if farther else 0.0
         if lx is not None:
             p.left_pts.append((lx, y))
         if rx is not None:
@@ -103,6 +111,8 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
         if lx is not None and rx is not None:
             width = rx - lx
             known = memory.width.get(i)
+            if known is not None:
+                known = max(known, floor_w)
             # 기억한 폭과 40% 넘게 다르면 진짜 차선 쌍이 아니다 (횡단보도 줄무늬·갈림길). 기억을 고치지 않고,
             # 화면 가운데에 가까운 쪽 선 하나만 믿는다 (2026-10-04: 줄무늬를 왼쪽 선으로 보고 폭을 좁게 배워 선 위로 달렸다)
             if known is not None and abs(width - known) > 0.4 * known:
@@ -111,12 +121,13 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
                 else:
                     centers[i] = (rx - known / 2.0, y)
                 continue
-            memory.width[i] = 0.7 * memory.width.get(i, width) + 0.3 * width
+            if not cw_now:
+                memory.width[i] = 0.7 * memory.width.get(i, width) + 0.3 * width
             centers[i] = ((lx + rx) / 2.0, y)
         elif lx is not None:
-            centers[i] = (lx + memory.width.get(i, default_w) / 2.0, y)
+            centers[i] = (lx + max(floor_w, memory.width.get(i, default_w)) / 2.0, y)
         elif rx is not None:
-            centers[i] = (rx - memory.width.get(i, default_w) / 2.0, y)
+            centers[i] = (rx - max(floor_w, memory.width.get(i, default_w)) / 2.0, y)
 
     p.left_seen = len(p.left_pts) >= 2
     p.right_seen = len(p.right_pts) >= 2

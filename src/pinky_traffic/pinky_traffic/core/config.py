@@ -119,6 +119,7 @@ class Config:
     oncoming_flag: str = 'oncoming'
     lane2_flag: str = 'lane2'        # 2차선 로봇이 출발해 아직 칸에 안 들어갔다 (1차선 로봇은 R1 에서 기다린다)
     lane2_wait_max_sec: float = 40.0 # 1차선이 R1 에서 기다리는 최대 시간 (2차선이 멈췄을 때 대비)
+    sign_after_turn_sec: float = 0.8   # 표지판에서 돈 뒤에도 이만큼 멈춰서 다음 표지판을 찾는다
     sign_pause_sec: float = 0.5      # 표지판 위에서 돌기 전에 완전히 멈추는 시간
     pocket_decide_sec: float = 1.0   # 2차선 로봇: 깃발이 없을 때 파란 선 앞에서 이만큼 서서 한 번 더 기다려 본 뒤 유턴한다
     pass_clear_sec: float = 1.5      # 2차선 로봇: 칸에서 본 상대 로봇이 이 시간 동안 안 보이면 '지나갔다'
@@ -156,11 +157,12 @@ class Config:
     sign_blue_frac: float = 0.15     # YOLO 가 칠한 영역 중 이 비율 이상이 파랑(blue_mask)
     # 표지판 정렬: 직우 표지판의 긴 축이 비스듬히 보이면 제자리에서 돌아 정면으로 맞춘 뒤 다가간다
     # (2026-10-09 pinky2: 우회전 코너를 넓게 돌아 직우 표지판에 비스듬히 들어가 칸으로 비뚤게 꺾였다)
-    sign_align_deg: float = 10.0     # 축이 이보다 더 틀어져 보이면 돈다 (화면 각도, 0 = 끔)
+    sign_align_deg: float = 8.0      # 축이 이보다 더 틀어져 보이면 돈다 (화면 각도, 0 = 끔)
     sign_align_kinds: str = 'straight_right'   # 경로에서 이 종류 표지판에만
-    sign_align_w: float = 0.5        # 제자리 회전 속도 rad/s
-    sign_align_sec: float = 4.0      # 정렬은 이 시간까지만 (못 맞추면 그냥 간다)
-    sign_align_far_row: float = 0.75 # 표지판 먼 끝이 이 행보다 위에 보일 때만 (발밑에 깔리면 축이 안 보인다)
+    sign_align_w: float = 0.4        # 제자리 회전 속도 rad/s
+    sign_align_sec: float = 8.0      # 정렬은 이 시간까지만 (못 맞추면 그냥 간다)
+    sign_align_near_row: float = 0.75   # 표지판 가까운 끝이 이 행 아래로 오면 (= 바로 앞) 멈추고 맞춘다
+    sign_align_far_row: float = 0.70 # 표지판 먼 끝이 이 행보다 위에 보일 때만 (발밑에 깔리면 축이 안 보인다)
     sign_horizon_row: float = 0.30   # 바닥과 나란한 선이 모이는 소실점 높이 (화면 위에서 / 높이)
     # 초록 칸 끝 선은 가로로 긴 띠만 (2026-10-09: 주행 중 LED 초록빛이 바닥에 비친 것)
     zone_min_width: float = 0.15     # 영상 폭의 이 비율 이상
