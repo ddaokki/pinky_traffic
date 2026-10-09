@@ -607,6 +607,13 @@ class LaneController:
             arrived = False
             if sign is None:
                 gone = now - self.t_target
+                side = abs(self.target[1]) > cfg.sign_arrive_x and not self.exiting and not self.aligned
+                if self.target[3] >= cfg.sign_gone_row and side and gone < cfg.sign_find_sec:
+                    # 옆으로 빠졌다 = 표지판 위가 아니라 옆을 지나가는 중 -> 그쪽으로 제자리에서 돌아 다시 찾는다
+                    # (2026-10-09 pinky1: R1·R2 가 화면 오른쪽 아래로 빠졌는데 '도착'으로 보고 표지판 옆에서 꺾음)
+                    if gone < cfg.sign_gone_sec:
+                        return Command(0.0, 0.0, SIGN_APPROACH, 'look')
+                    return Command(0.0, -cfg.sign_align_w if self.target[1] > 0 else cfg.sign_align_w, SIGN_APPROACH, 'find sign')
                 if self.target[3] >= cfg.sign_gone_row:            # 화면 아래로 빠져나갔다
                     arrived = gone >= cfg.sign_gone_sec
                     if not arrived:
@@ -627,6 +634,9 @@ class LaneController:
                 # 차선이 보이면 차선을 따라 곧게 간다 (표지판 가운데를 보고 가면 긴 직우 표지판에서 비스듬히 간다)
                 if self.aligned:
                     w = 0.0                         # 표지판에 맞춰 돌았다 -> 차선이 아니라 그 방향으로 곧장
+                elif self.target[3] >= cfg.sign_center_row and not self.exiting:
+                    # 가까이 왔다: 표지판 한가운데 위로 올라타게 표지판 쪽으로 (차선만 따라가면 옆을 지나친다)
+                    v, w = self._steer(Perception(ok=True, offset=self.target[1]), dt, cfg.v_min)
                 elif p.ok and not self.exiting:
                     v, w = self._steer(p, dt, cfg.v_min)
                 else:

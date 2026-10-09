@@ -209,8 +209,10 @@ def test_lane1_route_right_right_straight_then_lanes():
     c.step(see(), 1.0, 0.1)
     cmd = c.step(sign('turn', x=0.4), 1.0, 0.2)
     assert cmd.state == SIGN_APPROACH and c.plan_name == 'plan_lane1'
-    cmd = c.step(sign('turn', x=0.4), 1.0, 0.3)
-    assert abs(cmd.w) < 0.05                                              # 차선이 보이면 차선을 따라 곧게 (표지판 쪽으로 꺾지 않는다)
+    cmd = c.step(sign('turn', x=0.4, near=0.6), 1.0, 0.3)
+    assert abs(cmd.w) < 0.05                                              # 아직 멀다: 차선을 따라 곧게 (표지판 쪽으로 꺾지 않는다)
+    cmd = c.step(sign('turn', x=0.4, near=0.7), 1.0, 0.35)
+    assert cmd.w < 0                                                      # 가까이 왔다: 표지판 위에 올라타게 그쪽(오른쪽)으로
     cmd, t = through(c, AT_T, FAR_T, 0.3, 'right')
     assert cmd.state == SIGN_SEARCH and cmd.v == 0.04 and cmd.w == 0       # 다음 표지판을 찾으며 곧장
     cmd, t = through(c, AT_T, FAR_T, t, 'right')
@@ -465,6 +467,9 @@ def test_near_sign_wins_over_crosswalk():
     c.step(see(), 1.0, 0.1)
     p = see(crosswalk=True, crosswalk_y=0.66, signs=[('blue', 0.14, 0.45, 0.62)])
     cmd = c.step(p, 1.0, 0.2)
+    assert cmd.state == LANE_FOLLOW                                       # 횡단보도로 서지 않고, 아직 멀어 차선을 따라간다
+    p = see(crosswalk=True, crosswalk_y=0.70, signs=[('blue', 0.14, 0.5, 0.68)])
+    cmd = c.step(p, 1.0, 0.3)
     assert cmd.state == SIGN_APPROACH                                     # 횡단보도가 아니라 표지판으로
 
 
@@ -614,3 +619,19 @@ def test_lane1_does_not_stop_far_from_r1_and_waits_on_it_while_lane2_busy():
     run_flag(a, clock, sign('turn', far=0.85, near=1.0), 0.4)
     cmd = run_flag(a, clock, see(), 0.9)
     assert cmd.state == WAIT_JUNCTION and cmd.reason == 'wait lane2 into pocket'
+
+
+
+def test_sign_leaving_sideways_is_not_arrival():
+    # 2026-10-09 pinky1: R1·R2 가 화면 오른쪽 아래로 빠졌는데 '도착'으로 보고 표지판 옆에서 꺾음
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_T, 1.0, 0.2)
+    c.step(sign('turn', x=0.4, far=0.7, near=0.95), 1.0, 0.25)
+    c.step(sign('turn', x=0.75, far=0.8, near=1.0), 1.0, 0.3)
+    cmd, t = run(c, see(), 0.3, 1.0)
+    assert c.state == SIGN_APPROACH and cmd.v == 0 and cmd.w < 0         # 오른쪽으로 빠졌다 -> 제자리에서 오른쪽으로 돌아 찾는다
+    c.step(sign('turn', x=0.5, far=0.8, near=1.0), 1.0, 1.05)            # 돌면서 다시 보인다
+    c.step(sign('turn', x=0.2, far=0.8, near=1.0), 1.0, 1.1)
+    run(c, see(), 1.1, 1.6)
+    assert c.state == SIGN_ADVANCE                                        # 가운데에서 아래로 사라짐 = 도착

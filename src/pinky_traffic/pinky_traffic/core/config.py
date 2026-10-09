@@ -140,7 +140,7 @@ class Config:
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
-    sign_start_row: float = 0.55     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다)
+    sign_start_row: float = 0.65     # 표지판 가까운 끝이 이 행 아래로 와야 다가가기 시작 (그 전에는 차선을 따라간다. 2026-10-09: 0.55 는 횡단보도 지나 R1 이 보이자마자 차선을 버리고 감)
     sign_search_row: float = 0.40    # 표지판을 지나 다음 표지판을 찾으며 곧장 가는 중에는 이 행부터
     sign_max_x: float = 0.45         # 화면 가운데에서 이 범위 안(내 차선 앞)의 표지판만 (옆 차선 표지판 무시)
     sign_search_x: float = 0.95      # 표지판을 지나 다음 표지판을 찾는 중에는 이만큼 옆까지 (2026-10-09 pinky1: 돈 뒤 R2 가 x 0.9 에 보였다)
@@ -165,6 +165,9 @@ class Config:
     sign_step_max_sec: float = 0.6
     sign_settle_sec: float = 0.5     # 돈 뒤 멈춰서 화면이 가라앉기를 기다렸다 다시 잰다
     sign_align_confirm: int = 3      # 멈춘 채로 이만큼 연속 맞아야 다 맞춘 것
+    sign_center_row: float = 0.65    # 표지판 가까운 끝이 이 행 아래로 오면 차선 대신 표지판 가운데를 보고 간다 (위에 올라타게)
+    sign_arrive_x: float = 0.5       # 표지판이 이보다 옆에서 사라지면 '도착'이 아니라 옆을 지나친 것 -> 그쪽으로 돌아 다시 찾는다
+    sign_find_sec: float = 3.0       # 그렇게 다시 찾는 시간 (넘으면 도착으로 본다)
     sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
     sign_align_back_m: float = 0.15  # 정면 맞추며 최대 이만큼 후진 (너무 가까이 왔을 때)
     sign_align_near_row: float = 0.75   # 표지판 가까운 끝이 이 행 아래로 오면 (= 바로 앞) 멈추고 맞춘다
