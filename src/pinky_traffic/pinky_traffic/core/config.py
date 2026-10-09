@@ -11,10 +11,12 @@ import yaml
 @dataclass
 class Config:
     # ---------- 인식 (perception) ----------
-    backend: str = 'hsv'            # 'hsv' (학습 전/백업) | 'yolo' (best.pt)
+    backend: str = 'hsv'            # 'hsv' (학습 전/백업) | 'yolo' (best.pt) | 'hsv+yolo' (차선은 색, 표지판·로봇은 YOLO)
     weights: str = 'best.pt'        # yolo 가중치 경로
     conf: float = 0.4               # yolo 신뢰도 임계값
     imgsz: int = 320                # yolo 입력 크기
+    yolo_threads: int = 2           # yolo 가 쓰는 CPU 스레드 (로봇 2대가 PC 하나를 나눠 쓴다)
+    yolo_every: int = 3             # hsv+yolo: yolo 를 이 프레임마다 한 번 (그 사이는 직전 결과)
     proc_width: int = 320           # 처리 전 이 폭으로 줄인다 (속도)
 
     # HSV 범위 (OpenCV: H 0~179, S/V 0~255). 기본 = 흰색 테이프
@@ -48,6 +50,7 @@ class Config:
     k_heading: float = 0.0          # 먼 행과 가까운 행의 차이(곡률) 보정. 시뮬에서는 0 이 가장 정확했다
     w_max: float = 1.4              # rad/s
     slow_gain: float = 0.7          # offset 클수록 감속
+    offset_jump: float = 0.9        # 한 프레임에 차선 중심이 이보다 크게 바뀌면 그 한 프레임은 무시 (코너에서 선 오인)
     crosswalk_stop_sec: float = 3.0
     crossing_sec: float = 5.0       # 정지 후 횡단보도를 무시하고 지나가는 시간
     crosswalk_cooldown_sec: float = 3.0
@@ -115,6 +118,9 @@ class Config:
     # 2026-10-09 현장: 카메라가 낮아(6.5cm) 바닥 표지판이 납작하게 보여 우회전 표지판도 길쭉하다 -> 모양 구분이 틀린다.
     # 색으로 찾을 때는 종류를 정하지 않고('blue') 가장 가까운 표지판을 경로의 다음 표지판으로 본다. 종류 구분은 YOLO 가 한다.
     sign_shape: bool = False
+    # YOLO 표지판 종류를 경로 판단에 쓸지. False 면 YOLO 가 찾은 표지판도 종류 없이('blue') 가장 가까운 것을 다음 표지판으로 본다
+    # (2026-10-09 best_1009.pt: 표지판 라벨을 모양으로 자동 생성해 turn/straight_right 가 뒤바뀌어 학습됨 -> 라벨을 고칠 때까지 False)
+    sign_use_kind: bool = False
     # 햇빛이 비친 파란 테이프는 S 25 안팎, V 220 으로 하얗게 뜬다 (카펫은 H 55 근처라 색상으로 갈린다). 밝은 곳에서 이 범위도 파랑으로 본다
     # 2026-10-09: 초록 선이 park_line_row(0.80)에 오면 카메라 앞 약 14cm 다 (높이 6.5cm, 8도 숙임).
     # 거기서 바로 돌면 칸 입구에 너무 가까워 지나가는 로봇이 화면을 꽉 채운다 -> 이만큼 더 가서 초록 선 위에서 돈다

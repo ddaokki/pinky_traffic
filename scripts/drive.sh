@@ -2,7 +2,8 @@
 # PC 에서 로봇 한 대 몫의 주행 노드 실행.
 #   scripts/drive.sh <로봇이름> <ROS_DOMAIN_ID> [hsv|yolo] [가중치] [차선]
 #   예) scripts/drive.sh pinky1 24            # 색(HSV)으로 주행
-#       scripts/drive.sh pinky1 24 yolo       # models/best.pt 로 주행
+#       scripts/drive.sh pinky1 24 yolo       # models/best.pt 로 주행 (차선까지 YOLO)
+#       scripts/drive.sh pinky1 24 hsv+yolo   # 차선은 색, 표지판·상대 로봇은 YOLO
 #       scripts/drive.sh pinky1 24 hsv "" 1   # 1차선에 놓은 로봇: 표지판에서 우 -> 우(유턴) -> 직진
 #       scripts/drive.sh pinky2 23 hsv "" 2   # 2차선에 놓은 로봇: 상대가 오면 초록 칸으로 비켰다가 우 -> 좌 -> 좌, 아니면 직진 -> 좌 -> 좌
 #   LANE=1 scripts/drive.sh pinky1 24  처럼 줘도 된다. 로봇은 어느 쪽에 놓아도 되고, 놓은 차선 번호만 맞게 준다.
@@ -22,7 +23,7 @@ export ROS_DOMAIN_ID="$DOMAIN"
 # 주소가 바뀌면: PINKY_PEERS="주소1;주소2" scripts/drive.sh ...   자동으로 찾는 망이면: PINKY_PEERS="" scripts/drive.sh ...
 PINKY_PEERS="${PINKY_PEERS-192.168.129.199;192.168.129.200}"
 [ -n "$PINKY_PEERS" ] && export ROS_STATIC_PEERS="$PINKY_PEERS"
-if [ "$BACKEND" = "yolo" ]; then
+if [[ "$BACKEND" == *yolo* ]]; then     # yolo / hsv+yolo
   # ultralytics 는 ~/venv/yolo 에 있다
   export PYTHONPATH="$HOME/venv/yolo/lib/python3.12/site-packages:$PYTHONPATH"
 fi

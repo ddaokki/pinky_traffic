@@ -382,8 +382,9 @@ def test_color_signs_have_no_kind_and_count_as_next_sign():
 def test_glare_washed_blue_is_still_blue():
     img = floor()
     cv2.rectangle(img, (200, 150), (240, 175), (230, 215, 190), -1)       # 햇빛에 하얗게 뜬 파랑 (H 약 98, S 약 45, V 230)
+    cv2.rectangle(img, (195, 165), (205, 175), BLUE, -1)                  # 진한 파랑이 조금이라도 붙어 있으면
     p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
-    assert len(p.signs) == 1
+    assert len(p.signs) == 1                                              # 하얗게 뜬 부분까지 한 표지판
 
 
 def test_exit_goes_straight_to_first_sign_even_if_it_is_off_center():
@@ -405,3 +406,39 @@ def test_sign_lost_far_away_is_not_arrival():
     assert cmd.state == SIGN_APPROACH and cmd.v > 0                       # 잠깐 놓친 동안은 계속 다가간다
     cmd, t = run(c, see(), t, 2.0)
     assert c.state == LANE_FOLLOW and c.plan_i == 0                       # 1.5초 넘게 못 보면 도착이 아니라 놓친 것
+
+
+def test_bluish_white_line_alone_is_not_a_sign():
+    # 2026-10-09: 이 조명에서 흰 차선이 살짝 푸르게(H 100, S 25, V 220) 떠 표지판으로 잡혔다
+    img = lanes(floor())
+    cv2.line(img, (60, H - 1), (120, int(H * 0.45)), (230, 215, 200), 10)  # 푸르스름한 흰 선만
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    assert p.signs == []
+    cv2.rectangle(img, (200, 150), (240, 175), BLUE, -1)                  # 진한 파랑이 붙은 덩어리는 표지판
+    cv2.rectangle(img, (240, 150), (270, 175), (230, 215, 190), -1)       # (햇빛에 뜬 부분까지 한 덩어리로)
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    assert len(p.signs) == 1
+
+
+def test_bluish_white_line_alone_is_not_a_sign():
+    # 2026-10-09: 이 조명에서 흰 차선이 살짝 푸르게(H 100, S 25, V 220) 떠 표지판으로 잡혔다
+    img = lanes(floor())
+    cv2.line(img, (60, H - 1), (120, int(H * 0.45)), (230, 215, 200), 10)  # 푸르스름한 흰 선만
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    assert p.signs == []
+    cv2.rectangle(img, (200, 150), (240, 175), BLUE, -1)                  # 진한 파랑이 붙은 덩어리는 표지판
+    cv2.rectangle(img, (240, 150), (270, 175), (230, 215, 190), -1)       # (햇빛에 뜬 부분까지 한 덩어리로)
+    p, _, _ = HsvDetector(Config(lane_role=1)).detect(img)
+    assert len(p.signs) == 1
+
+
+def test_one_frame_offset_jump_is_ignored():
+    # 2026-10-09 pinky1: 코너 꼭짓점에서 한 프레임만 offset +1.5 -> 오른쪽으로 확 꺾여 이탈
+    c = started(offset_jump=0.9)
+    for i in range(5):
+        c.step(see(offset=0.0), 1.0, 0.1 * (i + 1))
+    cmd = c.step(see(offset=1.5), 1.0, 0.6)
+    assert abs(cmd.w) < 0.3                                              # 튄 한 프레임은 무시
+    c.step(see(offset=1.5), 1.0, 0.7)
+    cmd = c.step(see(offset=1.5), 1.0, 0.8)
+    assert cmd.w < -0.5                                                  # 계속 그러면 믿는다

@@ -52,10 +52,19 @@ class HsvDetector:
         return cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)   # 오프닝 = 작은 잡음 제거
 
     def blue_mask(self, frame):
-        """파란 표지판 마스크. 햇빛에 하얗게 뜬 부분(blue_glare_*)도 넣는다."""
+        """파란 표지판 마스크. 햇빛에 하얗게 뜬 부분(blue_glare_*)은 진한 파랑에 붙어 있을 때만 넣는다.
+        (2026-10-09: 이 조명에서는 흰 차선도 살짝 푸르게 떠 glare 범위에 들어갔다 -> 흰 선을 표지판으로 보고 차선을 벗어남.
+         진짜 표지판은 햇빛을 받아도 진한 파랑이 조금은 남는다)"""
         cfg = self.cfg
-        return self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi) | \
-            self.color_mask(frame, cfg.blue_glare_lo, cfg.blue_glare_hi)
+        strong = self.color_mask(frame, cfg.blue_hsv_lo, cfg.blue_hsv_hi)
+        glare = self.color_mask(frame, cfg.blue_glare_lo, cfg.blue_glare_hi)
+        both = strong | glare
+        if not glare.any() or not strong.any():
+            return strong
+        n, labels = cv2.connectedComponents(both, connectivity=8)
+        seeded = np.unique(labels[(strong > 0)])
+        seeded = seeded[seeded > 0]
+        return np.where(np.isin(labels, seeded), 255, 0).astype(np.uint8)
 
     def local_bright_mask(self, frame):
         """주변보다 밝은 가는 띠 (그늘 속 흰 테이프). 원본 - 오프닝(가는 밝은 것을 지운 배경) 이 크면 띠."""
@@ -180,14 +189,85 @@ class HsvDetector:
         return p, masks
 
 
+def load_yolo(cfg):
+    """YOLO 모델을 읽는다. 로봇 2대가 PC 하나에서 같이 돌므로 torch 스레드 수를 묶는다
+    (2026-10-09: 묶지 않으면 한 프로세스가 CPU 350% 를 써서 두 대 모두 영상을 못 따라갔다)."""
+    import torch
+    torch.set_num_threads(max(1, int(cfg.yolo_threads)))
+    from ultralytics import YOLO   # 여기서만 필요 (hsv 만 쓸 때는 설치 안 해도 된다)
+    model = YOLO(cfg.weights)
+    model.predict(np.zeros((cfg.imgsz, cfg.imgsz, 3), np.uint8), imgsz=cfg.imgsz, verbose=False)  # 워밍업
+    torch.set_num_threads(max(1, int(cfg.yolo_threads)))   # ultralytics 가 불러오면서 다시 늘려 놓는다
+    return model
+
+
+def yolo_objects(r, names, h, w, cfg):
+    """YOLO 결과 -> (표지판 목록, 발표용 물체 목록, robot 아래 끝 행, 클래스별 마스크)."""
+    masks = {name: np.zeros((h, w), np.uint8) for name in ('left', 'right', 'crosswalk', 'lane', 'robot')}
+    obstacle_y = 0.0
+    signs, objects = [], []
+    if r.boxes is not None and len(r.boxes):
+        classes = r.boxes.cls.cpu().numpy().astype(int)
+        polys = r.masks.xy if r.masks is not None else [None] * len(classes)
+        boxes = r.boxes.xyxy.cpu().numpy()
+        confs = r.boxes.conf.cpu().numpy() if hasattr(r.boxes, 'conf') else [None] * len(classes)
+        for poly, cls_id, box, conf in zip(polys, classes, boxes, confs):
+            name = names.get(int(cls_id), str(cls_id))
+            if (name in SIGNS or name == 'robot') and poly is not None and len(poly) >= 3:
+                obj = np.zeros((h, w), np.uint8)
+                cv2.fillPoly(obj, [np.asarray(poly, np.int32)], 255)
+                shown = name if (name == 'robot' or cfg.sign_use_kind) else 'sign'
+                objects.append((shown, None if conf is None else float(conf), obj))
+            if name == 'robot':
+                obstacle_y = max(obstacle_y, float(box[3] / (h - 1)))
+            if name in SIGNS:
+                signs.append((name if cfg.sign_use_kind else 'blue', float(((box[0] + box[2]) / 2 - w / 2.0) / (w / 2.0)),
+                              float(box[1] / (h - 1)), float(box[3] / (h - 1))))
+            if name in masks and poly is not None and len(poly) >= 3:
+                cv2.fillPoly(masks[name], [np.asarray(poly, np.int32)], 255)
+    return sorted(signs, key=lambda s: -s[3]), objects, obstacle_y, masks
+
+
+class HybridDetector(HsvDetector):
+    """backend 'hsv+yolo': 차선·초록 선은 색(HSV), 파란 표지판·상대 로봇은 YOLO.
+    YOLO 는 yolo_every 프레임마다 한 번 돌리고 그 사이는 직전 결과를 쓴다 (CPU 를 아낀다)."""
+
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.model = load_yolo(cfg)
+        self.names = self.model.names
+        self.has_signs = any(name in SIGNS for name in self.names.values())
+        self.n = 0
+        self.last = ([], [], 0.0)
+
+    def detect(self, frame):
+        t0 = time.perf_counter()
+        cfg = self.cfg
+        frame = resize_to(frame, cfg.proc_width)
+        h, w = frame.shape[:2]
+        if self.n % max(1, int(cfg.yolo_every)) == 0:
+            r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
+            self.last = yolo_objects(r, self.names, h, w, cfg)[:3]
+        self.n += 1
+        masks, found = self.masks(frame)
+        self.role_marks(frame)                   # 초록 선 (+ 색으로 찾은 표지판)
+        signs, objects, obstacle_y = self.last
+        if cfg.lane_role and self.has_signs:
+            self.signs, self.objects = list(signs), list(objects)
+        else:
+            self.objects = self.objects + [o for o in objects if o[0] == 'robot']
+        p, masks = self.perceive(frame, masks, found)
+        p.obstacle_y = obstacle_y
+        p.ms = (time.perf_counter() - t0) * 1000
+        return p, masks, frame
+
+
 class YoloDetector:
     def __init__(self, cfg):
-        from ultralytics import YOLO   # 여기서만 필요 (hsv 만 쓸 때는 설치 안 해도 된다)
         self.cfg = cfg
         self.memory = LaneMemory()
-        self.model = YOLO(cfg.weights)
+        self.model = load_yolo(cfg)
         self.names = self.model.names            # {0: 'left', ...}
-        self.model.predict(np.zeros((cfg.imgsz, cfg.imgsz, 3), np.uint8), imgsz=cfg.imgsz, verbose=False)  # 워밍업
         self.has_signs = any(name in SIGNS for name in self.names.values())
         self.marks = HsvDetector(cfg)            # 역할 표시와 갈림길 판단은 색 검출기와 같은 코드를 쓴다
         self.marks.memory = self.memory
@@ -199,27 +279,7 @@ class YoloDetector:
         frame = resize_to(frame, cfg.proc_width)
         h, w = frame.shape[:2]
         r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
-        masks = {name: np.zeros((h, w), np.uint8) for name in ('left', 'right', 'crosswalk', 'lane', 'robot')}
-        obstacle_y = 0.0
-        signs, objects = [], []
-        if r.boxes is not None and len(r.boxes):
-            classes = r.boxes.cls.cpu().numpy().astype(int)
-            polys = r.masks.xy if r.masks is not None else [None] * len(classes)
-            boxes = r.boxes.xyxy.cpu().numpy()
-            confs = r.boxes.conf.cpu().numpy() if hasattr(r.boxes, 'conf') else [None] * len(classes)
-            for poly, cls_id, box, conf in zip(polys, classes, boxes, confs):
-                name = self.names.get(int(cls_id), str(cls_id))
-                if (name in SIGNS or name == 'robot') and poly is not None and len(poly) >= 3:
-                    obj = np.zeros((h, w), np.uint8)
-                    cv2.fillPoly(obj, [np.asarray(poly, np.int32)], 255)
-                    objects.append((name, None if conf is None else float(conf), obj))
-                if name == 'robot':
-                    obstacle_y = max(obstacle_y, float(box[3] / (h - 1)))
-                if name in SIGNS:
-                    signs.append((name, float(((box[0] + box[2]) / 2 - w / 2.0) / (w / 2.0)),
-                                  float(box[1] / (h - 1)), float(box[3] / (h - 1))))
-                if name in masks and poly is not None and len(poly) >= 3:
-                    cv2.fillPoly(masks[name], [np.asarray(poly, np.int32)], 255)
+        signs, objects, obstacle_y, masks = yolo_objects(r, self.names, h, w, cfg)
         top = int(cfg.roi_top * h)
         for name in ('left', 'right', 'lane'):
             masks[name][:top] = 0
@@ -234,7 +294,7 @@ class YoloDetector:
         m.prefer, m.follow_zone = self.prefer, self.follow_zone
         m.role_marks(frame)                      # 초록 선 (+ 파란 표지판을 색으로)
         if cfg.lane_role and self.has_signs:
-            m.signs = sorted(signs, key=lambda s: -s[3])   # 학습한 표지판을 쓴다 (색 대신)
+            m.signs = signs                      # 학습한 표지판을 쓴다 (색 대신)
             self.objects = objects
         else:
             self.objects = m.objects + [o for o in objects if o[0] == 'robot']
@@ -248,6 +308,8 @@ class YoloDetector:
 def make_detector(cfg):
     if cfg.backend == 'yolo':
         return YoloDetector(cfg)
+    if cfg.backend == 'hsv+yolo':
+        return HybridDetector(cfg)
     if cfg.backend == 'hsv':
         return HsvDetector(cfg)
-    raise ValueError(f"backend 는 'hsv' 또는 'yolo' 입니다: {cfg.backend}")
+    raise ValueError(f"backend 는 'hsv', 'yolo', 'hsv+yolo' 중 하나입니다: {cfg.backend}")

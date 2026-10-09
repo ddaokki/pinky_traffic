@@ -115,6 +115,8 @@ class LaneController:
         self.t_cross_done = -1e9            # 마지막 횡단보도 통과 완료 시각
         self.t_cw_seen = None
         self.last_w = 0.0
+        self.last_offset = None             # 직전 프레임의 차선 중심 (한 프레임 튐 거르기)
+        self.jumps = 0
         self.crossings = 0
         self.in_route = False               # 주차 통로에 들어섰다 (STOP/START 전까지 유지)
         self.t_route = 0.0                  # 통로에 들어선 시각
@@ -306,6 +308,7 @@ class LaneController:
     def start(self, now=0.0):
         if self.state in (IDLE, ESTOP, LOST, PARKED):
             self.pid.reset()
+            self.last_offset, self.jumps = None, 0
             self.t_seen = None
             if self.state != LOST:
                 self.in_route = False
@@ -482,6 +485,14 @@ class LaneController:
 
         if p.ok:
             self.t_seen = now
+            # 차선 중심이 갑자기 크게 튀면 2프레임까지는 무시한다. 그 뒤에도 같으면 믿는다.
+            # (2026-10-09 pinky1: 코너 꼭짓점에서 양쪽 선이 한 덩어리로 붙어 한 프레임 동안 offset +1.5 -> 오른쪽으로 확 꺾여 차선 이탈)
+            if self.last_offset is not None and abs(p.offset - self.last_offset) > cfg.offset_jump and self.jumps < 2:
+                self.jumps += 1
+                p.offset = self.last_offset
+            else:
+                self.jumps = 0
+            self.last_offset = p.offset
         if p.crosswalk:
             self.t_cw_seen = now
 
