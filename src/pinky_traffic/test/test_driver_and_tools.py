@@ -1,6 +1,7 @@
 """Driver(검출+제어+명령 처리), 라벨 변환, 라이다 전방거리 테스트."""
 import math
 
+import cv2
 import numpy as np
 import pytest
 
@@ -73,7 +74,7 @@ def test_synthetic_labels_match_detector_classes(tmp_path):
     yaml_path = writer.finish()
     import yaml
     data = yaml.safe_load(open(yaml_path))
-    assert data['names'] == ['left', 'right', 'crosswalk', 'turn', 'straight_right'] and data['nc'] == 5   # 앞 3개 번호는 그대로
+    assert data['names'] == ['left', 'right', 'crosswalk', 'turn', 'straight_right', 'robot'] and data['nc'] == 6   # 앞 3개 번호는 그대로
     assert (tmp_path / 'ds' / 'train' / 'labels' / 'a.txt').read_text().count('\n') == len(lines) - 1
 
 
@@ -95,3 +96,15 @@ def test_front_range_from_scan():
     assert front_range(scan, 25.0, yaw_offset_deg=90.0) == pytest.approx(0.1, abs=1e-5)   # 라이다가 돌아가 달린 경우
     scan.ranges = []
     assert front_range(scan, 25.0) is None
+
+
+def test_robot_mask_from_background_difference():
+    from pinky_traffic.tools.robot_autolabel import robot_mask
+    bg = np.full((240, 320, 3), (95, 100, 100), np.uint8)
+    frame = bg.copy()
+    cv2.rectangle(frame, (100, 80), (180, 170), (20, 20, 20), -1)          # 검은 로봇 몸통
+    cv2.circle(frame, (120, 170), 15, (200, 180, 40), -1)                  # 하늘색 바퀴
+    m = robot_mask(frame, bg)
+    ys, xs = np.nonzero(m)
+    assert 95 <= xs.min() <= 106 and 174 <= xs.max() <= 186 and ys.max() >= 180
+    assert robot_mask(bg, bg) is None                                      # 아무도 없으면 없음

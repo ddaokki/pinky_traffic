@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 
-CLASSES = ['left', 'right', 'crosswalk', 'turn', 'straight_right']   # YOLO 클래스 순서 (data.yaml 의 names 와 같아야 한다)
+CLASSES = ['left', 'right', 'crosswalk', 'turn', 'straight_right', 'robot']   # YOLO 클래스 순서 (data.yaml 의 names 와 같아야 한다)
 SIGNS = ('turn', 'straight_right')   # 바닥의 파란 양방향 표지판: 우회전 양방향 / 직우 양방향
 
 
@@ -317,6 +317,34 @@ def stripes_are_crosswalk(stripe_boxes, cfg, h):
     med = mids[len(mids) // 2]
     close = sum(1 for m in mids if abs(m - med) <= 0.15 * h)
     return close >= cfg.crosswalk_min_stripes
+
+
+OBJECT_COLORS = {'turn': (255, 90, 30), 'straight_right': (255, 200, 0), 'sign': (255, 90, 30), 'robot': (60, 60, 255)}
+
+
+def draw_objects(frame, objects, text=None):
+    """YOLO 결과 화면처럼: 물체마다 칠한 마스크 + 테두리 + 박스 + '이름 신뢰도'. (발표용)"""
+    out = frame.copy()
+    overlay = out.copy()
+    for name, _, mask in objects:
+        overlay[mask > 0] = OBJECT_COLORS.get(name, (0, 255, 0))
+    out = cv2.addWeighted(overlay, 0.45, out, 0.55, 0)
+    for name, conf, mask in objects:
+        color = OBJECT_COLORS.get(name, (0, 255, 0))
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(out, contours, -1, color, 1, cv2.LINE_AA)
+        x, y, bw, bh = cv2.boundingRect(mask)
+        cv2.rectangle(out, (x, y), (x + bw, y + bh), color, 1)
+        label = name if conf is None else f'{name} {conf:.2f}'
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+        ty = max(th + 3, y)
+        cv2.rectangle(out, (x, ty - th - 3), (x + tw + 4, ty), color, -1)
+        cv2.putText(out, label, (x + 2, ty - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
+    if text:
+        h, w = out.shape[:2]
+        cv2.rectangle(out, (0, h - 14), (w, h), (0, 0, 0), -1)
+        cv2.putText(out, text, (3, h - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.33, (255, 255, 255), 1, cv2.LINE_AA)
+    return out
 
 
 def draw_debug(frame, p: Perception, masks=None, text=None):

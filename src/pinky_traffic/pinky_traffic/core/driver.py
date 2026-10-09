@@ -11,7 +11,7 @@ import cv2
 from .controller import LaneController, NoLock
 from .coordinator import DashLink
 from .detectors import make_detector
-from .perception import draw_debug
+from .perception import draw_debug, draw_objects
 
 
 class Driver:
@@ -30,6 +30,9 @@ class Driver:
         self.debug = None
         self.state = {}
         self.record_dir = record_dir        # 주면 달리는 동안 카메라 화면을 3장에 1장꼴로 저장 (원인 분석용)
+        # 발표용: 달리는 동안 표지판·로봇을 인식한 장면을 YOLO 결과 화면처럼 그려 따로 저장 (runs/showcase_<시각>_<로봇>/)
+        self.showcase_dir = record_dir.replace('frames_', 'showcase_') if record_dir else None
+        self._shown = 0
 
     def _forget(self):
         """출발할 때 차선 기억(폭·중심)을 비운다. 서 있는 동안 로봇을 들고 옮기면 엉뚱한 화면으로 기억이 채워진다."""
@@ -91,6 +94,14 @@ class Driver:
         if self.record_dir and self._n % 3 == 0 and cmd.state != 'idle':
             os.makedirs(self.record_dir, exist_ok=True)
             cv2.imwrite(os.path.join(self.record_dir, f'{self._n:06d}_{cmd.state}.jpg'), small)
+        objects = getattr(self.detector, 'objects', [])
+        if self.showcase_dir and objects and cmd.state != 'idle':
+            self._shown += 1
+            if self._shown % 2 == 1:        # 인식한 장면의 절반 (초당 약 7장)
+                os.makedirs(self.showcase_dir, exist_ok=True)
+                kinds = '+'.join(sorted({o[0] for o in objects}))
+                cv2.imwrite(os.path.join(self.showcase_dir, f'{self._n:06d}_{cmd.state}_{kinds}.jpg'),
+                            draw_objects(small, objects, f'{self.name} {cmd.state}'))
         state = {'state': cmd.state, 'v': round(cmd.v, 3), 'w': round(cmd.w, 3), 'offset': round(p.offset, 3),
                  'heading': round(p.heading, 3), 'ok': p.ok, 'left': p.left_seen, 'right': p.right_seen,
                  'crosswalk': p.crosswalk, 'crosswalk_y': round(p.crosswalk_y, 2),

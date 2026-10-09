@@ -40,6 +40,7 @@ class HsvDetector:
         self.route_end_y = 0.0
         self.prefer = ''                 # 'left' | 'right' : 제어기가 정한다. 그쪽 선만 보고 따라간다 (갈림길)
         self.signs = []                  # 파란 표지판 (lane_role 일 때)
+        self.objects = []                # 인식한 물체 [(이름, 신뢰도|None, 마스크)] (발표용 그림)
         self.follow_zone = False         # 제어기가 정한다: 칸 안에서는 초록 선 가운데를 보고 간다
         self.zone_x = 0.0                # 초록 선 가운데의 가로 위치 (-1 왼쪽 .. 1 오른쪽)
         self.zone_y = 0.0
@@ -131,10 +132,15 @@ class HsvDetector:
         """lane_role 맵의 색 표시: 파란 표지판, 초록 칸 끝 선."""
         cfg = self.cfg
         h, w = frame.shape[:2]
-        self.signs, self.zone_y = [], 0.0
+        self.signs, self.zone_y, self.objects = [], 0.0, []
         if not cfg.lane_role:
             return
-        self.signs = blue_signs(self.blue_mask(frame), cfg)
+        blue = self.blue_mask(frame)
+        self.signs = blue_signs(blue, cfg)
+        if self.signs:
+            n, labels, stats, _ = cv2.connectedComponentsWithStats(blue, connectivity=8)
+            self.objects = [('sign', None, np.uint8(labels == i) * 255) for i in range(1, n)
+                            if stats[i, cv2.CC_STAT_AREA] >= cfg.sign_min_area * w * h]
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         green = cv2.inRange(hsv, np.array(cfg.green_hsv_lo, np.uint8), np.array(cfg.green_hsv_hi, np.uint8))
         green[: int(cfg.zone_roi_top * h)] = 0
@@ -195,13 +201,18 @@ class YoloDetector:
         r = self.model.predict(frame, conf=cfg.conf, imgsz=cfg.imgsz, verbose=False)[0]
         masks = {name: np.zeros((h, w), np.uint8) for name in ('left', 'right', 'crosswalk', 'lane', 'robot')}
         obstacle_y = 0.0
-        signs = []
+        signs, objects = [], []
         if r.boxes is not None and len(r.boxes):
             classes = r.boxes.cls.cpu().numpy().astype(int)
             polys = r.masks.xy if r.masks is not None else [None] * len(classes)
             boxes = r.boxes.xyxy.cpu().numpy()
-            for poly, cls_id, box in zip(polys, classes, boxes):
+            confs = r.boxes.conf.cpu().numpy() if hasattr(r.boxes, 'conf') else [None] * len(classes)
+            for poly, cls_id, box, conf in zip(polys, classes, boxes, confs):
                 name = self.names.get(int(cls_id), str(cls_id))
+                if (name in SIGNS or name == 'robot') and poly is not None and len(poly) >= 3:
+                    obj = np.zeros((h, w), np.uint8)
+                    cv2.fillPoly(obj, [np.asarray(poly, np.int32)], 255)
+                    objects.append((name, None if conf is None else float(conf), obj))
                 if name == 'robot':
                     obstacle_y = max(obstacle_y, float(box[3] / (h - 1)))
                 if name in SIGNS:
@@ -224,6 +235,9 @@ class YoloDetector:
         m.role_marks(frame)                      # 초록 선 (+ 파란 표지판을 색으로)
         if cfg.lane_role and self.has_signs:
             m.signs = sorted(signs, key=lambda s: -s[3])   # 학습한 표지판을 쓴다 (색 대신)
+            self.objects = objects
+        else:
+            self.objects = m.objects + [o for o in objects if o[0] == 'robot']
         p, masks = m.perceive(frame, masks, None)
         masks = dict(masks, robot=robot)
         p.obstacle_y = obstacle_y
