@@ -174,6 +174,10 @@ class Config:
     crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
     lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다
     sign_wall_sec: float = 1.0       # 표지판 위에서 앞이 이만큼 막혀 있으면 표지판 끝으로 보고 돈다
+    wall_avoid_m: float = 0.15       # 앞 대각선(wall_avoid_from~to 도)에 벽이 이보다 가까우면 반대쪽으로 꺾는다 (0 = 끔)
+    wall_avoid_w: float = 1.0        # 아주 붙었을 때 더하는 회전 속도 rad/s
+    wall_avoid_from: float = 15.0
+    wall_avoid_to: float = 70.0
     turn_lead_deg: float = 5.0       # 오도메트리로 돌 때 목표보다 이만큼 일찍 멈춘다 (멈추는 동안 더 돈다)
     sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
     sign_align_plans: str = 'plan_lane2'   # 정면 맞추기를 하는 경로 (1차선은 S 를 U턴 직후 발밑에서 보므로 안 한다)

@@ -234,7 +234,9 @@ class LaneController:
             near = [s for s in ok if abs(s[1] - self.target[1]) <= 0.5]
             return min(near, key=lambda s: abs(s[1] - self.target[1])) if near else None
         searching = self.state == SIGN_SEARCH or self.exiting
-        return next((s for s in ok if self._mine(s, searching)), None)
+        # 여러 개면 화면 가운데에 가까운 것 (2026-10-09 pinky1: R2 를 돈 뒤 오른쪽의 다른 파랑으로 가다 벽으로)
+        mine = [s for s in ok if self._mine(s, searching)]
+        return min(mine, key=lambda s: abs(s[1])) if mine else None
 
     def _approach(self, sign, now, why):
         self.after_turn = self.state == SIGN_SEARCH          # 돈 뒤 다음 표지판: 먼저 제자리에서 정면으로 맞춘다
@@ -530,7 +532,7 @@ class LaneController:
         self.last_w = w
         return v, w
 
-    def step(self, p: Perception, front_m=None, now=0.0, sides=None, lidar_ok=True, yaw=None) -> Command:
+    def step(self, p: Perception, front_m=None, now=0.0, sides=None, lidar_ok=True, yaw=None, diag=None) -> Command:
         """sides = (왼쪽 거리, 오른쪽 거리) 라이다 측면 최소값 (없으면 None). lidar_ok=False 면 움직이지 않는다.
         yaw = 오도메트리 방향(rad, 없으면 None): 제자리 회전 각도를 잰다."""
         cfg = self.cfg
@@ -545,6 +547,7 @@ class LaneController:
         self.no_lidar = False
         cmd = self._step(p, front_m, now)
         cmd = self._side_guard(cmd, sides, now)
+        cmd = self._wall_avoid(cmd, diag)
         return self._safety_hold(cmd, front_m, sides, now)
 
     def _safety_hold(self, cmd, front_m, sides, now):
@@ -568,6 +571,21 @@ class LaneController:
             self.events.append((now, why))
         self.held = True
         return Command(0.0, cmd.w, cmd.state, why)
+
+    def _wall_avoid(self, cmd, diag):
+        """라이다 앞 대각선(diag = (왼쪽 앞, 오른쪽 앞) 최소 거리)에 벽이 wall_avoid_m 보다 가까우면 반대쪽으로 꺾는다.
+        카메라가 흰 가벽을 차선으로 잘못 봐도 벽에 박지 않게 (2026-10-09: 가벽이 차선 가장자리에 서 있어 두 대 모두 벽으로 감).
+        제자리 회전 중(v=0)이나 표지판 정면 맞추기 중에는 건드리지 않는다."""
+        cfg = self.cfg
+        if not diag or cfg.wall_avoid_m <= 0 or cmd.v <= 0 or cmd.state not in (LANE_FOLLOW, APPROACH, CROSSING, SIGN_APPROACH):
+            return cmd
+        m = cfg.wall_avoid_m
+        push = lambda d: 0.0 if d is None else max(0.0, (m - d) / m)
+        bias = cfg.wall_avoid_w * (push(diag[1]) - push(diag[0]))       # 오른쪽이 가까우면 + (왼쪽으로)
+        if bias == 0.0:
+            return cmd
+        w = max(-cfg.w_max, min(cfg.w_max, cmd.w + bias))
+        return Command(cmd.v, w, cmd.state, 'wall avoid')
 
     def _side_guard(self, cmd, sides, now):
         """옆구리 침범 막기: 측면 side_slow_m 안에 뭔가 있으면 반대쪽으로 조향하고 속도를 줄인다. side_stop_m 안이면 전진은 멈춘다.

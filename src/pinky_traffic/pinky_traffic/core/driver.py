@@ -80,7 +80,7 @@ class Driver:
                 self.cfg.lane_role = int(item[-1])
                 self.log(f'[{self.name}] 차선 역할 = {self.cfg.lane_role}')
 
-    def process(self, frame, front_m=None, now=None, sides=None, lidar_ok=True, yaw=None):
+    def process(self, frame, front_m=None, now=None, sides=None, lidar_ok=True, yaw=None, diag=None):
         """영상 한 장 -> Command. 디버그 그림은 self.debug 에 남긴다."""
         now = time.time() if now is None else now
         if self.autostart:
@@ -91,7 +91,7 @@ class Driver:
         self.detector.follow_zone = self.controller.pocket_mode
         self.detector.prefer = self.controller.prefer      # 갈림길에서 어느 쪽 선을 따라갈지
         p, masks, small = self.detector.detect(frame)
-        cmd = self.controller.step(p, front_m, now, sides, lidar_ok, yaw)
+        cmd = self.controller.step(p, front_m, now, sides, lidar_ok, yaw, diag)
         if self._t_prev is not None and now > self._t_prev:
             self.fps = 0.9 * self.fps + 0.1 / (now - self._t_prev) if self.fps else 1.0 / (now - self._t_prev)
         self._t_prev = now

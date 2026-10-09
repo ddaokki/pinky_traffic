@@ -740,3 +740,14 @@ def test_crosswalk_kept_with_two_stripes_once_seen():
     two = [(90, 130, 50, 50), (180, 132, 45, 50)]
     assert not stripes_are_crosswalk(two, cfg, 240)
     assert stripes_are_crosswalk(two, cfg, 240, 2)
+
+
+def test_lidar_wall_on_front_right_steers_left():
+    # 2026-10-09: 가벽이 차선 가장자리에 서 있어 카메라가 속아 두 대 모두 벽으로 감 -> 라이다 앞 대각선 벽에서 비킨다
+    c = started()
+    c.step(see(), 1.0, 0.1)
+    cmd = c.step(see(), 1.0, 0.2, diag=(0.6, 0.07))
+    assert cmd.w > 0.3 and cmd.reason == 'wall avoid'
+    cmd = c.step(see(), 1.0, 0.3, diag=(0.07, 0.6))
+    assert cmd.w < -0.3
+    assert abs(c.step(see(), 1.0, 0.4, diag=(0.5, 0.5)).w) < 0.05

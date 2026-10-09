@@ -103,6 +103,7 @@ class LaneDriverNode(Node):
         self.bridge = CvBridge()
         self.front = None
         self.sides = (None, None)
+        self.diag = (None, None)
         self.t_scan = 0.0
         self.use_scan = bool(get('use_scan'))
         self.t_image = 0.0
@@ -147,6 +148,9 @@ class LaneDriverNode(Node):
         self.sides = (side_object(msg, cfg.side_angle_from, cfg.side_angle_to, cfg.lidar_yaw_offset_deg, near, cfg.side_wall_len),
                       side_object(msg, -cfg.side_angle_to, -cfg.side_angle_from, cfg.lidar_yaw_offset_deg, near,
                                   cfg.side_wall_len))
+        # 앞 대각선 벽 (벽도 그대로 잰다): 벽 피하기 조향
+        self.diag = (sector_range(msg, cfg.wall_avoid_from, cfg.wall_avoid_to, cfg.lidar_yaw_offset_deg),
+                     sector_range(msg, -cfg.wall_avoid_to, -cfg.wall_avoid_from, cfg.lidar_yaw_offset_deg))
         self.t_scan = time.time()
 
     def on_compressed(self, msg):
@@ -162,9 +166,10 @@ class LaneDriverNode(Node):
         self.t_image = now
         fresh = now - self.t_scan < 1.0                               # 오래된 라이다 값은 쓰지 않는다
         front, sides = (self.front, self.sides) if fresh else (None, None)
+        diag = self.diag if fresh else None
         lidar_ok = not self.use_scan or now - self.t_scan < self.cfg.lidar_timeout_sec
         yaw = self.yaw if now - self.t_odom < 0.5 else None
-        cmd = self.driver.process(frame, front, now, sides, lidar_ok, yaw)
+        cmd = self.driver.process(frame, front, now, sides, lidar_ok, yaw, diag)
         self.publish(cmd.v, cmd.w)
         self.set_led(self.driver.controller.led)
         self.state_pub.publish(String(data=json.dumps(self.driver.state)))
