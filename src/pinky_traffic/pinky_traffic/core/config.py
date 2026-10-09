@@ -173,6 +173,7 @@ class Config:
     sign_blue_sec: float = 4.0       # YOLO 가 이보다 오래 못 보면 색만 남아 있어도 도착으로 본다
     crossing_straight_sec: float = 2.0   # 건너기 시작해서, 또 줄무늬가 발밑으로 사라진 뒤 이만큼은 곧장 (줄무늬·가벽에 차선이 헷갈린다)
     lane2_exit_max_sec: float = 90.0 # 칸에서 1차선 깃발이 이만큼 안 내려가도 나간다
+    sign_wall_sec: float = 1.0       # 표지판 위에서 앞이 이만큼 막혀 있으면 표지판 끝으로 보고 돈다
     turn_lead_deg: float = 5.0       # 오도메트리로 돌 때 목표보다 이만큼 일찍 멈춘다 (멈추는 동안 더 돈다)
     sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
     sign_align_plans: str = 'plan_lane2'   # 정면 맞추기를 하는 경로 (1차선은 S 를 U턴 직후 발밑에서 보므로 안 한다)

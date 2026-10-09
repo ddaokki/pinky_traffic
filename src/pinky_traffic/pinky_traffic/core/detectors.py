@@ -71,6 +71,7 @@ class HsvDetector:
         self.signs = []                  # 파란 표지판 (lane_role 일 때)
         self.angles = []                 # 파란 덩어리 축 각도 [(x, 오차)] (표지판 정렬)
         self.objects = []                # 인식한 물체 [(이름, 신뢰도|None, 마스크)] (발표용 그림)
+        self.cw_prev = False             # 직전 프레임에 횡단보도를 봤다
         self.follow_zone = False         # 제어기가 정한다: 칸 안에서는 초록 선 가운데를 보고 간다
         self.zone_x = 0.0                # 초록 선 가운데의 가로 위치 (-1 왼쪽 .. 1 오른쪽)
         self.zone_y = 0.0
@@ -164,7 +165,10 @@ class HsvDetector:
             found = None      # 면적으로 판정
         else:
             left, right, crosswalk, boxes = split_lane_mask(lane, cfg, self.memory, separate_crosswalk=True)
-            found = stripes_are_crosswalk(boxes, cfg, frame.shape[0])
+            # 바로 전에 횡단보도였으면 줄무늬 2개로도 이어 본다: 다가가면 바깥 줄무늬가 화면 옆에 닿아 차선으로 분류된다
+            # (2026-10-09 pinky2: 정지 행 직전에 줄무늬가 3개 -> 2개가 되어 '횡단보도 사라짐'으로 서지 않음)
+            found = stripes_are_crosswalk(boxes, cfg, frame.shape[0], 2 if self.cw_prev else None)
+            self.cw_prev = found
         return {'left': left, 'right': right, 'crosswalk': crosswalk}, found
 
     def role_marks(self, frame):

@@ -339,15 +339,16 @@ def _is_u_shape(xs, bottom_rows, ref):
     return xs.min() < ref - 2 and xs.max() > ref + 2 and not bottom_rows[:, max(0, c - 1):c + 2].any()
 
 
-def stripes_are_crosswalk(stripe_boxes, cfg, h):
-    """같은 색 모드: 비슷한 높이에 줄무늬가 여러 개 나란히 있으면 횡단보도."""
-    if len(stripe_boxes) < cfg.crosswalk_min_stripes:
+def stripes_are_crosswalk(stripe_boxes, cfg, h, need=None):
+    """같은 색 모드: 비슷한 높이에 줄무늬가 여러 개 나란히 있으면 횡단보도. need = 필요한 줄무늬 수 (기본 crosswalk_min_stripes)."""
+    need = cfg.crosswalk_min_stripes if need is None else need
+    if len(stripe_boxes) < need:
         return False
     mids = sorted(y + bh / 2.0 for _, y, _, bh in stripe_boxes)
     # 중앙값 주변 ±15% 높이 안에 들어오는 줄무늬 수
     med = mids[len(mids) // 2]
     close = sum(1 for m in mids if abs(m - med) <= 0.15 * h)
-    return close >= cfg.crosswalk_min_stripes
+    return close >= need
 
 
 OBJECT_COLORS = {'turn': (255, 90, 30), 'straight_right': (255, 200, 0), 'sign': (255, 90, 30), 'robot': (60, 60, 255)}

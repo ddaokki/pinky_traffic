@@ -721,3 +721,22 @@ def test_sign_turn_measures_angle_with_odometry():
             break
         yaw += cmd.w * 0.05 * 1.5                                        # 실제로는 명령보다 1.5배 빨리 돈다
     assert 80 <= abs(math.degrees(yaw)) <= 95                            # 시간으로 돌았으면 135도
+
+
+def test_wall_ahead_on_sign_counts_as_sign_end():
+    # 2026-10-09 pinky2: 직우 막대 위에서 앞 가벽이 10cm 안이라 안전 정지에 걸린 채 24초 멈춤
+    c = started(lane_role=1, **SIGN)
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_T, 1.0, 0.2)
+    on = sign('turn', far=0.5, near=1.0)
+    cmd, t = run(c, on, 0.2, 1.5, front=0.09)
+    assert c.state in (SIGN_ADVANCE, SIGN_TURN)                           # 막힌 채 1초 -> 표지판 끝
+
+
+def test_crosswalk_kept_with_two_stripes_once_seen():
+    # 2026-10-09 pinky2: 정지 행 직전에 바깥 줄무늬가 화면 옆에 닿아 2개만 남자 횡단보도를 놓침
+    from pinky_traffic.core.perception import stripes_are_crosswalk
+    cfg = Config()
+    two = [(90, 130, 50, 50), (180, 132, 45, 50)]
+    assert not stripes_are_crosswalk(two, cfg, 240)
+    assert stripes_are_crosswalk(two, cfg, 240, 2)

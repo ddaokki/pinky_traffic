@@ -151,6 +151,7 @@ class LaneController:
         self.aligned = False                # 직우 표지판과 나란히 맞췄다 -> 그 방향으로 곧장
         self.t_yolo = 0.0                   # 쫓던 표지판을 마지막으로 (YOLO 로) 본 시각
         self.after_turn = False             # 돈 뒤 다음 표지판으로 다가가는 중 (먼저 정면 맞추기)
+        self.t_walled = None                # 표지판 위에서 앞이 막힌 시각
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
         self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
         self.at_sign = False                # 표지판 위에 도착했다 (기다리는 중에 표지판이 다시 보여도 다시 다가가지 않는다)
@@ -669,7 +670,15 @@ class LaneController:
                 if cmd is not None:
                     return cmd
             arrived = False
-            if sign is None:
+            # 표지판 위에서 앞이 막혔다 (가벽) = 더 못 간다 -> 여기를 표지판 끝으로 본다
+            # (2026-10-09 pinky2: 직우 막대 위에서 앞 가벽이 10cm 안이라 안전 정지에 걸린 채 24초 멈춤)
+            walled = front_m is not None and front_m < cfg.hold_front_m + 0.01 and self.target is not None \
+                and self.target[3] >= cfg.sign_gone_row
+            self.t_walled = (self.t_walled or now) if walled else None
+            if walled and now - self.t_walled >= cfg.sign_wall_sec:
+                self.events.append((now, f'sign end: wall {front_m:.2f}m'))
+                sign, arrived = None, True
+            elif sign is None:
                 gone = now - self.t_target
                 side = abs(self.target[1]) > cfg.sign_arrive_x and not self.exiting and not self.aligned
                 if self.target[3] >= cfg.sign_gone_row and side and gone < cfg.sign_find_sec:
