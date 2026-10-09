@@ -160,7 +160,13 @@ class Config:
     sign_align_deg: float = 8.0      # 축이 이보다 더 틀어져 보이면 돈다 (화면 각도, 0 = 끔)
     sign_align_kinds: str = 'straight_right'   # 경로에서 이 종류 표지판에만
     sign_align_w: float = 0.4        # 제자리 회전 속도 rad/s
-    sign_align_sec: float = 8.0      # 정렬은 이 시간까지만 (못 맞추면 그냥 간다)
+    sign_align_sec: float = 15.0     # 정면 맞추기는 이 시간까지만 (못 맞추면 그냥 간다)
+    sign_step_min_sec: float = 0.15  # 정면 맞추기: 한 번에 도는 시간 (조금 틀어짐 .. 많이 틀어짐)
+    sign_step_max_sec: float = 0.6
+    sign_settle_sec: float = 0.5     # 돈 뒤 멈춰서 화면이 가라앉기를 기다렸다 다시 잰다
+    sign_align_confirm: int = 3      # 멈춘 채로 이만큼 연속 맞아야 다 맞춘 것
+    sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
+    sign_align_back_m: float = 0.15  # 정면 맞추며 최대 이만큼 후진 (너무 가까이 왔을 때)
     sign_align_near_row: float = 0.75   # 표지판 가까운 끝이 이 행 아래로 오면 (= 바로 앞) 멈추고 맞춘다
     sign_align_far_row: float = 0.70 # 표지판 먼 끝이 이 행보다 위에 보일 때만 (발밑에 깔리면 축이 안 보인다)
     sign_horizon_row: float = 0.30   # 바닥과 나란한 선이 모이는 소실점 높이 (화면 위에서 / 높이)

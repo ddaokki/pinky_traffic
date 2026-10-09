@@ -155,7 +155,7 @@ def sign(kind, x=0.0, far=0.5, near=0.7):
 
 FAR_T, AT_T = sign('turn'), see()            # AT_* = 표지판 위에 올라타 화면에서 사라졌다
 FAR_S, AT_S = sign('straight_right'), see()
-SIGN = dict(v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
+SIGN = dict(sign_align_deg=0.0, v_min=0.04, park_turn_w=0.8, sign_advance_m=0.12, sign_turn_deg=90.0, sign_gone_row=0.85, sign_gone_sec=0.3,
             sign_search_sec=6.0, junction_clear_sec=8.0)
 
 
@@ -499,7 +499,7 @@ def test_plan_step_can_have_its_own_advance():
 
 def test_lane2_turns_in_place_until_straight_right_sign_looks_straight():
     # 2026-10-09 pinky2: 코너를 넓게 돌아 직우 표지판에 비스듬히 들어갔다 -> 바로 앞에서 멈추고 축이 정면으로 보일 때까지 돈다
-    c = started(lane_role=2, sign_align_deg=8.0, **SIGN)
+    c = started(lane_role=2, **dict(SIGN, sign_align_deg=8.0, sign_settle_sec=0.0, sign_step_min_sec=0.0, sign_step_max_sec=0.0, sign_align_confirm=1))
     c.step(see(), 1.0, 0.1)
     c.step(FAR_S, 1.0, 0.2)
     assert c.state == SIGN_APPROACH
@@ -515,7 +515,7 @@ def test_lane2_turns_in_place_until_straight_right_sign_looks_straight():
     assert cmd.v > 0 and cmd.w == 0 and c.aligned                        # 맞았다 -> 그 방향으로 곧장
     cmd = c.step(close(30.0), 1.0, 0.7)
     assert cmd.v > 0 and cmd.w == 0                                      # 한 번 맞추면 다시 돌지 않는다
-    c2 = started(lane_role=2, sign_align_deg=8.0, sign_align_sec=1.0, **SIGN)
+    c2 = started(lane_role=2, **dict(SIGN, sign_align_deg=8.0, sign_align_sec=1.0))
     c2.step(see(), 1.0, 0.1)
     c2.step(FAR_S, 1.0, 0.2)
     cmd, _ = run(c2, close(30.0), 0.2, 1.6)
@@ -577,3 +577,40 @@ def test_lane_width_not_learned_on_crosswalk_and_near_not_narrower_than_far():
     cv2.line(only_right, (165, H - 1), (200, 100), 255, 8)
     p = lane_from_masks(np.zeros((H, W), np.uint8), only_right, None, cfg, mem)
     assert p.offset < -0.4                                               # 오른쪽 선의 왼쪽(차선 안쪽)을 목표로
+
+
+def test_square_up_turns_in_steps_and_checks_while_still():
+    # 현장 요청: 돌면서 찍힌 화면은 흔들린다 -> 조금 돌고, 멈춰서 다시 재고, 멈춘 채 3번 연속 맞아야 끝
+    c = started(lane_role=2, **dict(SIGN, sign_align_deg=8.0, sign_settle_sec=0.5, sign_step_min_sec=0.15,
+                                    sign_step_max_sec=0.6, sign_align_confirm=3))
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_S, 1.0, 0.2)
+    close = lambda err: see(signs=[('blue', 0.0, 0.3, 0.9)], sign_angles=[(0.0, err)])
+    cmd = c.step(close(45.0), 1.0, 0.3)
+    assert cmd.v == 0 and cmd.w < 0 and cmd.reason == 'align'           # 많이 틀어짐 -> 0.6초 돈다
+    assert c.step(close(45.0), 1.0, 0.8).w < 0                           # 도는 중에는 화면을 안 믿는다
+    cmd = c.step(close(-30.0), 1.0, 1.0)
+    assert cmd.v == 0 and cmd.w == 0 and cmd.reason == 'settle'          # 멈춰서 가라앉기를 기다린다
+    cmd = c.step(close(3.0), 1.0, 1.5)
+    assert cmd.w == 0 and not c.aligned                                  # 한 번 맞음: 아직 확인 중
+    c.step(close(3.0), 1.0, 1.7)
+    cmd = c.step(close(3.0), 1.0, 1.9)
+    assert c.aligned and cmd.v > 0 and cmd.w == 0                        # 3번 연속 -> 곧장
+
+
+def test_lane1_does_not_stop_far_from_r1_and_waits_on_it_while_lane2_busy():
+    # 2026-10-09 영상: 1차선이 R1 을 멀리서 보자마자 서서 기다림 -> R1 까지 가서, 2차선이 직우를 본 뒤 칸에 들어갈 때까지 대기
+    clock = Clock()
+    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **POCKET)
+    b = started(LocalLock(clock.mgr, 'b'), lane_role=2, **POCKET)
+    assert clock.mgr.flags_of_others('a') == []                          # 2차선은 직우를 보기 전에는 깃발이 없다
+    clock.t = 0.1
+    b.step(FAR_S, 1.0, clock.t)
+    assert clock.mgr.flags_of_others('a') == ['lane2']                   # 직우를 봤다 -> 1차선은 R1 에서 대기
+    clock.mgr.request('junction', 'b')                                   # 2차선이 구간을 쥐고 있다
+    cmd = run_flag(a, clock, FAR_T, 0.3)
+    assert cmd.state == SIGN_APPROACH and cmd.v > 0                      # 멀리서 서지 않고 R1 까지 간다
+    clock.mgr.raise_flag('lane2', 'b', True)
+    run_flag(a, clock, sign('turn', far=0.85, near=1.0), 0.4)
+    cmd = run_flag(a, clock, see(), 0.9)
+    assert cmd.state == WAIT_JUNCTION and cmd.reason == 'wait lane2 into pocket'
