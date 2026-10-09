@@ -199,5 +199,5 @@ def test_safety_hold_in_sign_maneuver():
     cmd = c.step(sign, 0.12, 0.3)
     assert cmd.state == 'sign_approach' and cmd.v == 0 and cmd.reason.startswith('hold front')
     cmd = c.step(sign, 1.0, 0.4, sides=(0.05, 0.5))
-    assert cmd.v == 0 and cmd.reason.startswith('hold side')
+    assert cmd.v > 0                                                      # 표지판 기동 중에는 옆(가벽 끝)으로 안 멈춘다
     assert c.step(sign, 1.0, 0.5, sides=(0.3, 0.3)).v > 0

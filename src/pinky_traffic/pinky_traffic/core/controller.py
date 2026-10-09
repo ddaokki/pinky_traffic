@@ -398,7 +398,11 @@ class LaneController:
             self.held = False
             return cmd
         near_front = front_m is not None and front_m < cfg.hold_front_m
-        near_side = bool(sides) and any(d is not None and d < cfg.side_stop_m for d in sides)
+        # 옆은 보통 주행 중에만 본다. 표지판 기동·칸 안은 가벽 사이를 지나가 벽 끝이 옆 5~7cm 로 붙는다
+        # (2026-10-09 pinky2: 직우 표지판으로 가다 가벽 끝을 옆 로봇으로 보고 계속 멈춰 표지판 끝까지 못 감)
+        lane_states = (LANE_FOLLOW, APPROACH, CROSSING)
+        near_side = cmd.state in lane_states and not (self.pocket_mode or self.exiting) and bool(sides) and \
+            any(d is not None and d < cfg.side_stop_m for d in sides)
         if not (near_front or near_side):
             self.held = False
             return cmd
