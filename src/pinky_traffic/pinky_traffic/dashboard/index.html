@@ -47,7 +47,14 @@
   .res .pass.on { background:#1f6f35; } .res .fail.on { background:#a02822; }
   td.note input { width:100%; background:#141a21; border:1px solid var(--line); color:var(--text); border-radius:4px; padding:3px 5px; font:inherit; }
   .tcwrap { max-height:520px; overflow:auto; }
-  .muted { color:var(--dim); } .lock b { color:var(--warn); }
+  .muted { color:var(--dim); }
+  #signals { display:flex; flex-direction:column; gap:6px; padding:0 16px; }
+  #signals:not(:empty) { padding:10px 16px 0; }
+  .signal { border-radius:8px; padding:9px 14px; font-weight:700; font-size:15px; border:1px solid; }
+  .signal.to1 { background:#3d2f0b; border-color:var(--warn); color:#f2cc60; }
+  .signal.to2 { background:#0f2d4d; border-color:var(--accent); color:#9ecbff; }
+  #sliders { display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:0 24px; }
+  .bottom { padding:0 16px 16px; }
   label.chk { display:flex; gap:6px; align-items:center; margin:6px 0; }
 </style>
 </head>
@@ -59,18 +66,21 @@
   <button class="estop" onclick="cmd('all','estop')">비상정지 (전체)</button>
   <span class="muted" id="summary"></span>
 </header>
+<div id="signals"></div>
 <main>
   <div>
     <div class="panel"><h2>로봇</h2><div id="robots"><span class="muted">아직 연결된 로봇이 없습니다. lane_driver 를 실행하세요.</span></div></div>
-    <div class="panel" style="margin-top:14px"><h2>테스트케이스 <span class="muted" id="tcsum"></span></h2><div class="tcwrap"><table id="tc"></table></div></div>
   </div>
   <div>
-    <div class="panel"><h2>구간 락 (2대 운용)</h2><div id="locks" class="lock muted">사용 안 함</div>
-      <label class="chk"><input type="checkbox" id="coord" onchange="setParam('use_coordinator', this.checked)"> 횡단보도 한 대씩 통과 (use_coordinator)</label></div>
-    <div class="panel" style="margin-top:14px"><h2>파라미터 (전 로봇에 즉시 적용)</h2><div id="sliders"></div></div>
+    <div class="panel"><h2>테스트케이스 <span class="muted" id="tcsum"></span></h2><div class="tcwrap"><table id="tc"></table></div></div>
     <div class="panel" style="margin-top:14px"><h2>이벤트</h2><div id="events"></div><div class="muted" id="rundir" style="margin-top:6px;font-size:12px"></div></div>
   </div>
 </main>
+<div class="bottom">
+  <div class="panel"><h2>파라미터 (전 로봇에 즉시 적용)</h2>
+    <label class="chk"><input type="checkbox" id="coord" onchange="setParam('use_coordinator', this.checked)"> 두 대 순서 맞추기 (횡단보도 한 대씩 · 1차선/2차선 신호, use_coordinator)</label>
+    <div id="sliders"></div></div>
+</div>
 <script>
 const $ = id => document.getElementById(id);
 let built = {sliders:false, tc:false}, cards = {}, dragging = false;
@@ -131,15 +141,18 @@ function render(s) {
     if (r.has_frame) el.querySelector('img').src = `/frame/${name}.jpg?t=${Date.now()}`;
     el.querySelector('.kv').innerHTML = [
       ['v m/s', f(st.v)], ['w rad/s', f(st.w)], ['offset', f(st.offset)], ['fps', f(st.fps,1)],
-      ['좌/우', (st.left?'●':'○') + ' ' + (st.right?'●':'○')], ['횡단보도', st.crosswalk ? '보임 ' + f(st.crosswalk_y) : '–'],
-      ['전방 m', f(st.front)], ['이유', st.reason || '–'], ['인식 ms', f(st.ms,0) + ' ' + (st.backend||'')],
+      ['전방 m', f(st.front)], ['이유', st.reason || '–'], ['인식 ms', f(st.ms,0)],
     ].map(([k,v]) => `<div><span>${k}</span>${v}</div>`).join('');
     drawHistory(el.querySelector('canvas'), r.history || []);
   }
-  const locks = Object.entries(s.locks);
-  $('locks').innerHTML = locks.length ? locks.map(([res, l]) =>
-    res.startsWith('flag:') ? `깃발 ${res.slice(5)}: <b>${l.queue.join(', ')}</b> (오는 중)`
-    : `${res}: 통과 중 <b>${l.holder || '없음'}</b> · 대기 ${l.queue.length ? l.queue.join(', ') : '없음'}`).join('<br>') : '요청 없음';
+  // 1차선/2차선 서로의 신호 (서버 깃발): 받은 쪽을 위에 크게 띄운다
+  const byRole = n => names.filter(x => ((s.robots[x].state || {}).role || 0) === n);
+  const flag = name => ((s.locks['flag:' + name] || {}).queue || []);
+  const signals = [];
+  const lane2 = flag('lane2'), oncoming = flag('oncoming');
+  if (lane2.length) signals.push(`<div class="signal to1">1차선 ${byRole(1).join(', ') || ''} ← 2차선 ${lane2.join(', ')} 인식: 2차선이 직우 표지판을 봤다 → 1차선은 R1 에서 대기</div>`);
+  if (oncoming.length) signals.push(`<div class="signal to2">2차선 ${byRole(2).join(', ') || ''} ← 1차선 ${oncoming.join(', ')} 인식: 1차선이 유턴하러 온다 → 2차선은 초록 칸으로 비킨다</div>`);
+  $('signals').innerHTML = signals.join('');
   const current = {...s.defaults, ...s.params};
   if (!dragging) $('coord').checked = !!current.use_coordinator;
   if (!built.sliders) {
