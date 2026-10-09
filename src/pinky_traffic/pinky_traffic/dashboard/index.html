@@ -48,11 +48,9 @@
   td.note input { width:100%; background:#141a21; border:1px solid var(--line); color:var(--text); border-radius:4px; padding:3px 5px; font:inherit; }
   .tcwrap { max-height:520px; overflow:auto; }
   .muted { color:var(--dim); }
-  #signals { display:flex; flex-direction:column; gap:6px; padding:0 16px; }
-  #signals:not(:empty) { padding:10px 16px 0; }
-  .signal { border-radius:8px; padding:9px 14px; font-weight:700; font-size:15px; border:1px solid; }
-  .signal.to1 { background:#3d2f0b; border-color:var(--warn); color:#f2cc60; }
-  .signal.to2 { background:#0f2d4d; border-color:var(--accent); color:#9ecbff; }
+  .screen { position:relative; }
+  .seen { position:absolute; left:50%; top:12%; transform:translateX(-50%); padding:8px 18px; border-radius:8px;
+          font-weight:800; font-size:20px; background:rgba(210,153,34,.92); color:#111; display:none; white-space:nowrap; }
   #sliders { display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:0 24px; }
   .bottom { padding:0 16px 16px; }
   label.chk { display:flex; gap:6px; align-items:center; margin:6px 0; }
@@ -66,7 +64,6 @@
   <button class="estop" onclick="cmd('all','estop')">비상정지 (전체)</button>
   <span class="muted" id="summary"></span>
 </header>
-<div id="signals"></div>
 <main>
   <div>
     <div class="panel"><h2>로봇</h2><div id="robots"><span class="muted">아직 연결된 로봇이 없습니다. lane_driver 를 실행하세요.</span></div></div>
@@ -97,7 +94,7 @@ function card(name) {
   const el = document.createElement('div');
   el.className = 'robot';
   el.innerHTML = `<div class="head"><span class="name"></span><span class="role badge"></span><span class="badge state"></span></div>
-    <img alt="디버그 영상"><div class="kv"></div><canvas width="600" height="120"></canvas>
+    <div class="screen"><img alt="디버그 영상"><div class="seen"></div></div><div class="kv"></div><canvas width="600" height="120"></canvas>
     <div class="row"><button class="go">▶ START</button><button class="s">■ STOP</button><button class="estop">비상정지</button></div>
     <div class="row lane"><span>놓은 차선</span><button class="l1">1차선</button><button class="l2">2차선</button><button class="l0">역할 없음</button></div>
     <div class="row lane"><span>시연</span><button class="il">← 끼어들기</button><button class="ir">끼어들기 →</button></div>`;
@@ -145,14 +142,17 @@ function render(s) {
     ].map(([k,v]) => `<div><span>${k}</span>${v}</div>`).join('');
     drawHistory(el.querySelector('canvas'), r.history || []);
   }
-  // 1차선/2차선 서로의 신호 (서버 깃발): 받은 쪽을 위에 크게 띄운다
-  const byRole = n => names.filter(x => ((s.robots[x].state || {}).role || 0) === n);
+  // 상대 차선 로봇의 신호(서버 깃발)를 받으면 그 로봇 화면 위에 잠깐 띄운다: 1차선 화면엔 '2차선 인식', 2차선 화면엔 '1차선 인식'
   const flag = name => ((s.locks['flag:' + name] || {}).queue || []);
-  const signals = [];
-  const lane2 = flag('lane2'), oncoming = flag('oncoming');
-  if (lane2.length) signals.push(`<div class="signal to1">1차선 ${byRole(1).join(', ') || ''} ← 2차선 ${lane2.join(', ')} 인식: 2차선이 직우 표지판을 봤다 → 1차선은 R1 에서 대기</div>`);
-  if (oncoming.length) signals.push(`<div class="signal to2">2차선 ${byRole(2).join(', ') || ''} ← 1차선 ${oncoming.join(', ')} 인식: 1차선이 유턴하러 온다 → 2차선은 초록 칸으로 비킨다</div>`);
-  $('signals').innerHTML = signals.join('');
+  for (const name of names) {
+    const role = (s.robots[name].state || {}).role || 0, el = card(name), box = el.querySelector('.seen');
+    const other = role === 1 ? flag('lane2') : role === 2 ? flag('oncoming') : [];
+    const on = other.some(x => x !== name);
+    if (on && !el.dataset.seenOn) el.dataset.seenUntil = Date.now() + 4000;   // 새로 켜진 순간부터 4초
+    el.dataset.seenOn = on ? '1' : '';
+    box.textContent = role === 1 ? '2차선 인식' : '1차선 인식';
+    box.style.display = on && Date.now() < +(el.dataset.seenUntil || 0) ? 'block' : 'none';
+  }
   const current = {...s.defaults, ...s.params};
   if (!dragging) $('coord').checked = !!current.use_coordinator;
   if (!built.sliders) {

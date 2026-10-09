@@ -649,3 +649,16 @@ def test_white_wall_face_is_not_lane_or_crosswalk():
         cv2.rectangle(img, (x, 150), (x + 30, 215), WHITE, -1)          # 횡단보도 줄무늬는 벽이 아니다
     p, masks, _ = HsvDetector(Config()).detect(img)
     assert masks['crosswalk'].any()
+
+
+def test_square_up_reacquires_sign_that_jumped_to_other_side():
+    # 2026-10-09 pinky2: 오른쪽에 보던 직우가 돌면서 왼쪽으로 넘어갔는데 계속 오른쪽으로 찾으며 빙빙 돎
+    c = started(lane_role=2, **dict(SIGN, sign_align_deg=8.0, sign_settle_sec=0.0, sign_step_min_sec=0.0,
+                                    sign_step_max_sec=0.0, sign_align_confirm=1))
+    c.step(see(), 1.0, 0.1)
+    c.step(sign('straight_right', x=0.4, near=0.7), 1.0, 0.2)
+    c.step(sign('straight_right', x=0.6, far=0.4, near=1.0), 1.0, 0.3)
+    cmd = c.step(see(signs=[('blue', -0.5, 0.43, 1.0)], sign_angles=[(-0.5, -15.0)]), 1.0, 0.4)
+    assert cmd.w > 0                                                     # 왼쪽으로 넘어간 표지판을 다시 잡아 왼쪽으로
+    cmd, _ = run(c, see(), 0.4, 4.0)
+    assert c.state == LANE_FOLLOW and c.plan_i == 0                      # 끝내 못 찾으면 도착으로 치지 않고 다시 찾는다

@@ -316,10 +316,23 @@ class LaneController:
             self.events.append((now, f'align skipped ({why})'))
             return None
         if sign is None:
+            # 돌다 보면 표지판이 반대쪽으로 확 넘어가 '같은 표지판'으로 안 이어질 수 있다 -> 보이는 것 중 가운데에 가까운 것을 다시 잡는다
+            # (2026-10-09 pinky2: 오른쪽에 보던 직우가 돌면서 왼쪽으로 넘어갔는데 계속 오른쪽으로 찾으며 빙빙 돎)
+            seen = [sg for sg in p.signs if sg[3] >= cfg.sign_search_row]
+            if seen:
+                sign = min(seen, key=lambda sg: abs(sg[1]))
+                self.target, self.t_target = sign, now
+        if sign is None:
             if now - self.t_target < cfg.sign_gone_sec:
                 return Command(0.0, 0.0, SIGN_APPROACH, 'look')       # 잠깐 안 잡힌 것일 수 있다
+            if now - self.t_target > cfg.sign_find_sec:
+                # 못 찾았다: 도착으로 치지 말고 차선을 따라가다 다시 보이면 처음부터 (경로 순번은 그대로)
+                self.events.append((now, 'square up: sign lost'))
+                self.t_mode = now
+                self._go(SIGN_SEARCH if self.plan_i or self.exiting else LANE_FOLLOW, now, 'sign lost')
+                return Command(0.0, 0.0, self.state)
             if abs(self.target[1]) > cfg.sign_face_x:
-                return pulse(turn_to(self.target[1]), 1.0, 'find sign')        # 옆으로 빠졌다 -> 그쪽으로 돈다
+                return pulse(turn_to(self.target[1]), 0.5, 'find sign')        # 옆으로 빠졌다 -> 그쪽으로 조금씩 돈다
             return skip('sign under robot')
         x = sign[1]
         if abs(x) > (0.85 if self.align_shaft else cfg.sign_face_x):
