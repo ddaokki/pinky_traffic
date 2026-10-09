@@ -117,6 +117,9 @@ class Config:
     # 2차선 로봇은 파란 선 앞에서: 깃발이 있으면 초록 칸으로 비키고, 없으면 파란 선을 거꾸로 따라 유턴해 1차선으로 간다.
     # 칸에서는 상대 로봇(yolo 'robot')이 보였다가 pass_clear_sec 동안 안 보이거나, 깃발이 내려가면 나와서 우회전 -> 유턴.
     oncoming_flag: str = 'oncoming'
+    lane2_flag: str = 'lane2'        # 2차선 로봇이 출발해 아직 칸에 안 들어갔다 (1차선 로봇은 R1 에서 기다린다)
+    lane2_wait_max_sec: float = 40.0 # 1차선이 R1 에서 기다리는 최대 시간 (2차선이 멈췄을 때 대비)
+    sign_pause_sec: float = 0.5      # 표지판 위에서 돌기 전에 완전히 멈추는 시간
     pocket_decide_sec: float = 1.0   # 2차선 로봇: 깃발이 없을 때 파란 선 앞에서 이만큼 서서 한 번 더 기다려 본 뒤 유턴한다
     pass_clear_sec: float = 1.5      # 2차선 로봇: 칸에서 본 상대 로봇이 이 시간 동안 안 보이면 '지나갔다'
     pass_front_m: float = 0.35       # 2차선 로봇: 칸에서 라이다 전방 이 거리 안에 뭔가 지나가도 '상대 로봇을 봤다'로 친다 (칸은 테이프라 벽이 없다)

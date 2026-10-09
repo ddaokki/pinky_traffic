@@ -195,9 +195,11 @@ def through(c, near_p, far_p, t, action, clock=None, flag=None):
     t = t + 3.6
     if action == 'straight':
         return cmd, t
-    assert cmd.state == SIGN_TURN and (cmd.w < 0 if action == 'right' else cmd.w > 0)
-    cmd = step(see(), t + 2.0)                                            # 90도 / 0.8 = 1.96초
-    return cmd, t + 2.0
+    assert cmd.state == SIGN_TURN and cmd.v == 0                          # 제자리 (멈춤 -> 회전)
+    cmd = step(see(), t + 0.6)
+    assert cmd.state == SIGN_TURN and cmd.v == 0 and (cmd.w < 0 if action == 'right' else cmd.w > 0)
+    cmd = step(see(), t + 2.6)                                            # 0.5 + 90도 / 0.8 = 2.46초
+    return cmd, t + 2.6
 
 
 def test_lane1_route_right_right_straight_then_lanes():
@@ -206,7 +208,7 @@ def test_lane1_route_right_right_straight_then_lanes():
     cmd = c.step(sign('turn', x=0.4), 1.0, 0.2)
     assert cmd.state == SIGN_APPROACH and c.plan_name == 'plan_lane1'
     cmd = c.step(sign('turn', x=0.4), 1.0, 0.3)
-    assert cmd.w < 0                                                      # 표지판 쪽(오른쪽)으로 간다
+    assert abs(cmd.w) < 0.05                                              # 차선이 보이면 차선을 따라 곧게 (표지판 쪽으로 꺾지 않는다)
     cmd, t = through(c, AT_T, FAR_T, 0.3, 'right')
     assert cmd.state == SIGN_SEARCH and cmd.v == 0.04 and cmd.w == 0       # 다음 표지판을 찾으며 곧장
     cmd, t = through(c, AT_T, FAR_T, t, 'right')
@@ -357,26 +359,20 @@ def test_two_robots_pass_each_other_at_pocket():
             ca, cb = a.step(pa, 1.0, t), b.step(pb, fb, t)
         return ca, cb
 
-    ca, cb = tick(FAR_T, FAR_S)                                            # 1차선: 우회전 표지판 -> 깃발, 구간을 쥔다
-    assert ca.state == SIGN_APPROACH and a.junction_held and cb.state == SIGN_APPROACH
+    tick(see(), see())                                                     # 2차선 출발 -> '2차선 진행 중' 깃발
+    ca, cb = tick(FAR_T, FAR_S)                                            # 1차선: 우회전 표지판 -> oncoming 깃발
     ca, cb = tick(NEAR_T, NEAR_S)
-    ca, cb = tick(see(), see(), 4)                                          # 둘 다 표지판 위로 올라타 사라졌다
-    assert b.plan_name == 'plan_lane2_pocket' and cb.state == SIGN_ADVANCE  # 2차선: 깃발이 있다 -> 칸으로
-    assert ca.state == SIGN_ADVANCE
-    ca, cb = tick(see(), see(), 52)                                         # 2차선 우회전 끝 / 1차선 첫 우회전 끝
-    assert b.pocket_mode and a.plan_i == 1
-    ca, cb = tick(FAR_T, see(zone_seen=True, zone_y=0.85), 2)
-    ca, cb = tick(NEAR_T, see(), 1)
-    ca, cb = tick(see(), see(), 31)                                         # 2차선: 초록 선 위까지 / 1차선: 두 번째 표지판 위
-    assert cb.state == PARK_TURN
-    ca, cb = tick(see(), see(), 45)                                         # 1차선 두 번째 우회전 / 2차선 180도
-    assert cb.state == WAIT_EXIT and a.plan_i == 2
-    ca, cb = tick(FAR_S, see(), 1)
-    ca, cb = tick(NEAR_S, see(), 1, fb=0.25)
-    ca, cb = tick(see(), see(), 34, fb=0.25)                                # 1차선이 직우를 지나며 칸 앞을 지나간다
-    assert a.plan_done and cb.state == WAIT_EXIT and b.saw_robot
-    ca, cb = tick(see(), see(), 16)                                         # 1.5초 동안 안 보인다 -> 지나갔다
-    assert b.exiting and b.plan_name == 'plan_lane2_exit'
+    ca, cb = tick(see(), see(), 4)                                          # 둘 다 표지판 위
+    assert ca.state == WAIT_JUNCTION and ca.v == 0                         # 1차선은 R1 위에서 기다린다 (2차선이 아직 칸 밖)
+    assert b.plan_name == 'plan_lane2_pocket'                              # 2차선은 깃발을 보고 칸으로
+    ca, cb = tick(see(), see(), 60)                                         # 2차선: 더 감 + 멈춤 + 우회전
+    assert b.pocket_mode and ca.state == WAIT_JUNCTION
+    tick(see(), see(zone_seen=True, zone_y=0.85), 2)
+    ca, cb = tick(see(), see(), 32)                                         # 초록 선 위까지
+    ca, cb = tick(see(), see(), 45)                                         # 180도 -> 칸 안에서 대기
+    assert cb.state == WAIT_EXIT
+    ca, cb = tick(see(), see(), 2)
+    assert ca.state in (SIGN_ADVANCE, SIGN_TURN)                           # 이제 1차선이 R1 에서 우회전
 
 def test_color_signs_have_no_kind_and_count_as_next_sign():
     img = floor()
@@ -468,3 +464,18 @@ def test_near_sign_wins_over_crosswalk():
     p = see(crosswalk=True, crosswalk_y=0.66, signs=[('blue', 0.14, 0.45, 0.62)])
     cmd = c.step(p, 1.0, 0.2)
     assert cmd.state == SIGN_APPROACH                                     # 횡단보도가 아니라 표지판으로
+
+
+def test_sign_turn_starts_with_full_stop():
+    c = started(lane_role=1, sign_pause_sec=0.5, **{k: v for k, v in SIGN.items()})
+    c.step(see(), 1.0, 0.1)
+    c.step(FAR_T, 1.0, 0.2)
+    c.step(sign('turn', far=0.85, near=1.0), 1.0, 0.3)
+    run(c, see(), 0.3, 0.7)                                               # 사라지고 0.3초 -> 표지판 위
+    cmd, t = run(c, see(), 0.7, 3.8)                                      # 0.12m 더 감
+    assert c.state == SIGN_TURN
+    t0 = c.t_state
+    cmd = c.step(see(), 1.0, t0 + 0.2)
+    assert cmd.v == 0 and cmd.w == 0                                      # 0.5초 동안은 완전히 멈춤
+    cmd = c.step(see(), 1.0, t0 + 0.7)
+    assert cmd.v == 0 and cmd.w < 0                                       # 그다음 제자리 우회전

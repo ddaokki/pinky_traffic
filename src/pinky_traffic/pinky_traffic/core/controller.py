@@ -119,6 +119,7 @@ class LaneController:
         self.side_alert = False             # 옆 물체를 피하는 중
         self.cw_hits = 0                    # 정지 행 앞에서 횡단보도가 연속으로 보인 프레임 수
         self.held = False                   # 안전 정지 중 (앞·옆이 너무 가깝다)
+        self.lane2_up = False               # 2차선: 진행 중 깃발을 올려 두었다
         self.cw_first_y = 1.0
         self.intrude_dir, self.intrude_until = 0, -1.0   # 시연용 끼어들기 (+1 오른쪽, -1 왼쪽)
         self.no_lidar = False
@@ -180,6 +181,12 @@ class LaneController:
             self.lock.flag(self.cfg.oncoming_flag, on)
         self.flag_up = on
 
+    def _flag2(self, on):
+        """2차선 진행 중 깃발 (계속 불러야 유지)."""
+        if self.cfg.use_coordinator and (on or self.lane2_up):
+            self.lock.flag(self.cfg.lane2_flag, on)
+        self.lane2_up = on
+
     def _set_plan(self, name, now):
         self.plan, self.plan_i, self.plan_name, self.plan_done = parse_plan(getattr(self.cfg, name)), 0, name, False
         self.events.append((now, f'plan {name}: {self.plan_text}'))
@@ -226,6 +233,12 @@ class LaneController:
         """표지판 끝에 도착: 할 행동을 정한다. 기다려야 하면 Command."""
         cfg = self.cfg
         kind, action = self.plan[self.plan_i]
+        if cfg.lane_role == 1 and self.plan_name == 'plan_lane1' and self.plan_i == 0 and cfg.use_coordinator:
+            # R1 위: 2차선 로봇이 아직 칸에 안 들어갔으면 기다린다 (2026-10-09: 1차선이 먼저 와서 우회전하다 칸으로 가던 2차선과 충돌)
+            if self.t_decide is None:
+                self.t_decide = now
+            if self.lock.others_flag(cfg.lane2_flag) and now - self.t_decide < cfg.lane2_wait_max_sec:
+                return Command(0.0, 0.0, WAIT_JUNCTION, 'wait lane2 into pocket')
         if cfg.lane_role == 2 and self.plan_name == 'plan_lane2' and self.plan_i == 0:
             # 직우 표지판 위: 상대가 오면 우회전해서 칸으로, 아니면 직진(유턴하러)
             if self._oncoming():
@@ -270,6 +283,9 @@ class LaneController:
                깃발이 내려가면 나와서 plan_lane2_exit (우 -> 좌 -> 좌). 깃발이 없으면 직진 -> 좌 -> 좌.
         """
         cfg = self.cfg
+        if cfg.lane_role == 2:
+            # 2차선 진행 중 깃발: 칸에 들어가 돌아서거나 경로를 마칠 때까지. 1차선 로봇은 R1 에서 이걸 보고 기다린다
+            self._flag2(not (self.pocket_parked or self.plan_done))
         if cfg.lane_role == 1:
             if p.signs and not self.flag_up and not self.cleared:
                 self.events.append((now, 'oncoming flag up'))
@@ -346,6 +362,7 @@ class LaneController:
         self._release()
         self._junction(False)
         self._flag(False)
+        self._flag2(False)
         self._reset_role()
         self.in_route = False
         self._go(IDLE, now, 'stop')
@@ -403,7 +420,7 @@ class LaneController:
         # 옆은 보통 주행 중에만 본다. 표지판 기동·칸 안은 가벽 사이를 지나가 벽 끝이 옆 5~7cm 로 붙는다
         # (2026-10-09 pinky2: 직우 표지판으로 가다 가벽 끝을 옆 로봇으로 보고 계속 멈춰 표지판 끝까지 못 감)
         lane_states = (LANE_FOLLOW, APPROACH, CROSSING)
-        near_side = cmd.state in lane_states and not (self.pocket_mode or self.exiting) and bool(sides) and \
+        near_side = cfg.side_guard and cmd.state in lane_states and not (self.pocket_mode or self.exiting) and bool(sides) and \
             any(d is not None and d < cfg.side_stop_m for d in sides)
         if not (near_front or near_side):
             self.held = False
@@ -450,6 +467,8 @@ class LaneController:
             self._junction(True)                      # 기동 중에도 락을 계속 쥔다 (하트비트)
         if cfg.lane_role == 1 and self.flag_up and not self.cleared:
             self._flag(True)
+        if cfg.lane_role == 2 and self.lane2_up:
+            self._flag2(True)                         # 표지판 기동 중에도 '2차선 진행 중' 깃발을 계속 올린다 (안 부르면 4초 뒤 사라진다)
         if self.state == POCKET_END:
             self.advance += cfg.v_min * dt
             if self.advance < cfg.zone_advance_m:
@@ -461,6 +480,7 @@ class LaneController:
                 if cfg.lane_role == 2:
                     self.pocket_mode, self.pocket_parked = False, True
                     self._junction(False)             # 칸 안에 들어왔다 -> 1차선 로봇이 유턴해도 된다
+                    self._flag2(False)                # '2차선 진행 중' 깃발을 내린다 -> 1차선 로봇이 R1 에서 출발
                     self._go(WAIT_EXIT, now, 'turned')
                     return Command(0.0, 0.0, WAIT_EXIT)
                 self._go(PARKED, now, 'turned')
@@ -503,8 +523,11 @@ class LaneController:
                 # 칸에서 나올 때: 입구의 직우 표지판은 왼쪽으로 길게 보여 가운데를 보고 가면 칸 벽 선을 넘는다 -> 곧장 나간다
                 return Command(cfg.v_min, 0.0, SIGN_APPROACH, 'exit straight')
             else:
-                x = self.target[1]
-                v, w = self._steer(Perception(ok=True, offset=x), dt, cfg.v_min)
+                # 차선이 보이면 차선을 따라 곧게 간다 (표지판 가운데를 보고 가면 긴 직우 표지판에서 비스듬히 간다)
+                if p.ok and not self.exiting:
+                    v, w = self._steer(p, dt, cfg.v_min)
+                else:
+                    v, w = self._steer(Perception(ok=True, offset=self.target[1]), dt, cfg.v_min)
                 return Command(cfg.v_min, w, SIGN_APPROACH)
         if self.state == SIGN_ADVANCE:
             self.advance += cfg.v_min * dt
@@ -515,7 +538,9 @@ class LaneController:
             else:
                 self._maneuver_done(now)
         if self.state == SIGN_TURN:
-            if now - self.t_state < math.radians(cfg.sign_turn_deg) / max(0.1, cfg.park_turn_w):
+            if now - self.t_state < cfg.sign_pause_sec:
+                return Command(0.0, 0.0, SIGN_TURN, 'pause')     # 표지판 위에서 완전히 멈춘 뒤 돈다
+            if now - self.t_state < cfg.sign_pause_sec + math.radians(cfg.sign_turn_deg) / max(0.1, cfg.park_turn_w):
                 return Command(0.0, -cfg.park_turn_w if self.action == 'right' else cfg.park_turn_w, SIGN_TURN)
             self._maneuver_done(now)
         if cfg.lane_role and any(s[3] >= cfg.sign_cw_block_row for s in p.signs):
