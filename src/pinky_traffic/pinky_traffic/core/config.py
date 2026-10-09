@@ -131,7 +131,7 @@ class Config:
     # 표지판을 따라가다 화면에서 완전히 사라지면 '도착' (가까운 끝이 sign_gone_row 아래까지 왔다가 sign_gone_sec 동안 안 보임)
     sign_gone_row: float = 0.85
     sign_gone_sec: float = 0.3
-    sign_advance_m: float = 0.05     # 도착(사라짐) 뒤 곧장 더 가는 거리. 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
+    sign_advance_m: float = 0.12     # 도착(사라짐) 뒤 곧장 더 가는 거리 (2026-10-09 현장: 0.05 는 두 번째 표지판에서 일찍 꺾어 가벽을 봄). 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로
     sign_min_area: float = 0.002     # 파란 표지판 최소 면적 / 영상 면적
