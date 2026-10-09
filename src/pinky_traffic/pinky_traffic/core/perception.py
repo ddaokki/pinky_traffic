@@ -102,8 +102,10 @@ def lane_from_masks(left, right, crosswalk, cfg, memory: LaneMemory, crosswalk_f
             default_w = max(0.1 * w, float(np.polyval(fit, frac)))
         # 가까운 행의 폭은 먼 행보다 좁을 수 없다 (원근). 잘못 배운 좁은 폭을 이걸로 막는다
         # (2026-10-09 pinky2: 가까운 행이 164px 로 배워져 오른쪽 선만 보일 때 그 선 위를 달렸다)
-        farther = [v for j, v in memory.width.items() if j > i]
-        floor_w = max(farther) if farther else 0.0
+        # 먼 행들 폭의 가운뎃값 (최댓값을 쓰면 한 행만 잘못 넓게 배워도 가운데가 확 밀린다:
+        #  2026-10-09 pinky2 횡단보도 직후 왼쪽 선만 보일 때 offset +1.5 로 급우회전)
+        farther = sorted(v for j, v in memory.width.items() if j > i)
+        floor_w = farther[len(farther) // 2] if farther else 0.0
         if lx is not None:
             p.left_pts.append((lx, y))
         if rx is not None:
@@ -240,6 +242,12 @@ def is_wall(box_mask, cfg, w, h, top=0):
     벽은 화면 위쪽(ROI 위 경계)에서 내려온다. 위 경계에 닿지 않은 넓은 띠는 코너에서 발 앞을 가로지르는
     차선이다 (2026-10-04: 돌아오는 길 코너에서 가까운 가로선을 벽으로 지워 차선을 놓쳤다).
     """
+    bh, bw = box_mask.shape[:2]
+    area = int(np.count_nonzero(box_mask))
+    if bh >= cfg.wall_blob_h * h and area >= cfg.wall_blob_area * w * h and area >= cfg.wall_blob_fill * bw * bh:
+        # 크고 꽉 찬 덩어리 = 가까이 붙은 흰 가벽의 면 (테이프는 가늘다). 위가 그늘져 ROI 위 경계에 안 닿아도 벽이다
+        # (2026-10-09 pinky2: 횡단보도 옆에 세운 가벽 밑면을 차선·횡단보도로 봤다)
+        return True
     if top > (cfg.roi_top + 0.05) * h:
         return False
     wide_rows = int(np.count_nonzero(box_mask.sum(axis=1) > cfg.lane_wall_width * w))

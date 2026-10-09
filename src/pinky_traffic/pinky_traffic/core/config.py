@@ -169,7 +169,7 @@ class Config:
     sign_arrive_x: float = 0.5       # 표지판이 이보다 옆에서 사라지면 '도착'이 아니라 옆을 지나친 것 -> 그쪽으로 돌아 다시 찾는다
     sign_find_sec: float = 3.0       # 그렇게 다시 찾는 시간 (넘으면 도착으로 본다)
     sign_face_x: float = 0.35        # 표지판이 이보다 옆에 보이면 먼저 제자리에서 돌아 가운데로
-    sign_align_back_m: float = 0.15  # 정면 맞추며 최대 이만큼 후진 (너무 가까이 왔을 때)
+    sign_align_plans: str = 'plan_lane2'   # 정면 맞추기를 하는 경로 (1차선은 S 를 U턴 직후 발밑에서 보므로 안 한다)
     sign_align_near_row: float = 0.75   # 표지판 가까운 끝이 이 행 아래로 오면 (= 바로 앞) 멈추고 맞춘다
     sign_align_far_row: float = 0.70 # 표지판 먼 끝이 이 행보다 위에 보일 때만 (발밑에 깔리면 축이 안 보인다)
     sign_horizon_row: float = 0.30   # 바닥과 나란한 선이 모이는 소실점 높이 (화면 위에서 / 높이)
@@ -207,6 +207,9 @@ class Config:
     # 흰 벽 걸러내기: 한 행에서 영상 폭의 lane_wall_width 보다 넓은 행이 영상 높이의 lane_wall_rows 이상이면 면(벽)
     lane_wall_width: float = 0.30
     lane_wall_rows: float = 0.12
+    wall_blob_h: float = 0.30        # 흰 덩어리가 이만큼 키가 크고 (횡단보도 줄무늬 0.24~0.28)
+    wall_blob_area: float = 0.05     # 영상의 이 비율보다 넓고 (줄무늬 0.03, 가벽 0.06~0.22)
+    wall_blob_fill: float = 0.45     # 자기 상자를 이만큼 채우면 벽의 면 (비스듬한 차선 테이프는 0.3 아래)
     lane_wall_base: float = 0.50     # ROI 위 경계 바로 아래 행이 이 폭보다 넓게 희면 벽 밑단으로 보고 지운다
     # 흰 벽이 화면을 채우면 카메라가 어둡게 찍어 테이프 밝기(V)가 170 아래로 떨어진다 (현장 146).
     # 바닥(화면 아래쪽) 밝기 중앙값 + lane_v_margin 까지 V 하한을 내린다. lane_hsv_lo 의 V 보다 올리지는 않는다.

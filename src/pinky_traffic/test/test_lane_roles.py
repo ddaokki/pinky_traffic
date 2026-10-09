@@ -635,3 +635,17 @@ def test_sign_leaving_sideways_is_not_arrival():
     c.step(sign('turn', x=0.2, far=0.8, near=1.0), 1.0, 1.1)
     run(c, see(), 1.1, 1.6)
     assert c.state == SIGN_ADVANCE                                        # 가운데에서 아래로 사라짐 = 도착
+
+
+def test_white_wall_face_is_not_lane_or_crosswalk():
+    # 2026-10-09 pinky2: 횡단보도 옆에 세운 흰 가벽 밑면을 차선·횡단보도로 봤다
+    img = lanes(floor())
+    pts = np.array([[200, 100], [319, 100], [319, 239], [260, 239]], np.int32)
+    cv2.fillPoly(img, [pts], WHITE)                                      # 오른쪽에 크게 붙은 흰 면
+    p, masks, _ = HsvDetector(Config()).detect(img)
+    assert not masks['right'][200:, 290:].any() and not masks['crosswalk'][200:, 290:].any()
+    img = floor()
+    for x in (90, 150, 210):
+        cv2.rectangle(img, (x, 150), (x + 30, 215), WHITE, -1)          # 횡단보도 줄무늬는 벽이 아니다
+    p, masks, _ = HsvDetector(Config()).detect(img)
+    assert masks['crosswalk'].any()

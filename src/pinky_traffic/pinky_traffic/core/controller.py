@@ -145,7 +145,6 @@ class LaneController:
         self.t_align = None                 # 표지판 정렬(제자리 회전)을 시작한 시각
         self.aligned = False                # 직우 표지판과 나란히 맞췄다 -> 그 방향으로 곧장
         self.align_shaft = False            # 정면 맞추기: 축 맞추는 단계에 들어갔다
-        self.backed = 0.0                   # 정면 맞추며 후진한 거리
         self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
         self.at_sign = False                # 표지판 위에 도착했다 (기다리는 중에 표지판이 다시 보여도 다시 다가가지 않는다)
         self.plan_name = ''
@@ -278,8 +277,9 @@ class LaneController:
 
     def _align_kind(self):
         kinds = [k.strip() for k in str(self.cfg.sign_align_kinds).split(',')]
+        plans = [k.strip() for k in str(self.cfg.sign_align_plans).split(',')]
         return self.cfg.sign_align_deg > 0 and not self.exiting and self.plan_i < len(self.plan) \
-            and self.plan[self.plan_i][0] in kinds
+            and self.plan[self.plan_i][0] in kinds and self.plan_name in plans
 
     def _square_up(self, sign, p, now, dt):
         """직우 표지판 정면 맞추기 (aligned 가 될 때까지 SIGN_APPROACH 대신). Command 를, 다 맞췄으면 None.
@@ -290,7 +290,7 @@ class LaneController:
          180도도 틀어짐. 1차선도 S 를 옆으로 지나쳐 직진 대신 흰 선 따라 좌회전)"""
         cfg = self.cfg
         if self.t_align is None:
-            self.t_align, self.backed, self.align_shaft = now, 0.0, False
+            self.t_align, self.align_shaft = now, False
             self.pulse_w, self.pulse_until, self.settle_until, self.ok_hits = 0.0, -1.0, -1.0, 0
             self.events.append((now, 'square up to sign'))
         if now - self.t_align > cfg.sign_align_sec:
@@ -310,15 +310,17 @@ class LaneController:
             self.settle_until = self.pulse_until + cfg.sign_settle_sec
             return Command(0.0, w, SIGN_APPROACH, why)
         turn_to = lambda x: -cfg.sign_align_w if x > 0 else cfg.sign_align_w
-        back = lambda why: (setattr(self, 'backed', self.backed + cfg.v_min * dt),
-                            Command(-cfg.v_min, 0.0, SIGN_APPROACH, why))[1] if self.backed < cfg.sign_align_back_m \
-            else Command(0.0, 0.0, SIGN_APPROACH, why)
+        def skip(why):
+            # 후진은 하지 않는다 (2026-10-09 1차선: S 가 발밑에 있어 '너무 가깝다'며 계속 후진) -> 맞추기를 그만두고 예전처럼 간다
+            self.aligned = True
+            self.events.append((now, f'align skipped ({why})'))
+            return None
         if sign is None:
             if now - self.t_target < cfg.sign_gone_sec:
                 return Command(0.0, 0.0, SIGN_APPROACH, 'look')       # 잠깐 안 잡힌 것일 수 있다
             if abs(self.target[1]) > cfg.sign_face_x:
                 return pulse(turn_to(self.target[1]), 1.0, 'find sign')        # 옆으로 빠졌다 -> 그쪽으로 돈다
-            return back('back to sign')                               # 발밑으로 들어갔다 -> 조금 물러서 다시 본다
+            return skip('sign under robot')
         x = sign[1]
         if abs(x) > (0.85 if self.align_shaft else cfg.sign_face_x):
             return pulse(turn_to(x), abs(x), 'face sign')
@@ -326,7 +328,7 @@ class LaneController:
             v, w = self._steer(Perception(ok=True, offset=x), dt, cfg.v_min)
             return Command(cfg.v_min, w, SIGN_APPROACH, 'to sign')
         if sign[2] > cfg.sign_align_far_row:
-            return back('back up')                                    # 너무 가까워 축이 안 보인다
+            return skip('too close')                                  # 너무 가까워 축이 안 보인다
         self.align_shaft = True
         if not p.sign_angles:
             return Command(0.0, 0.0, SIGN_APPROACH, 'align')
