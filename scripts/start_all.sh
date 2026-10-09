@@ -47,7 +47,10 @@ for row in "${ROBOTS[@]}"; do
   say "$NAME 카메라 노드 복사 + bringup/카메라/LED 시작"
   scp -q "${SSH_OPTS[@]}" "$WS/src/pinky_traffic/pinky_traffic/nodes/camera_pub.py" "pinky@$IP:~/camera_pub.py"
   ssh "${SSH_OPTS[@]}" "pinky@$IP" bash -s <<EOF
-pkill -f bringup_robot.launch.xml; pkill -f camera_pub.py; pkill -f led_server; sleep 1
+pkill -f bringup_robot.launch.xml; pkill -f camera_pub.py; pkill -f led_server
+# launch 만 끄면 라이다·모터 노드가 남아 포트를 쥔다 -> 새 bringup 의 라이다가 시간 초과로 죽는다 (2026-10-09)
+pkill -f sllidar_node; pkill -f pinky_bringup/bringup; pkill -f battery_publisher; pkill -f joint_state_publisher; pkill -f robot_state_publisher
+sleep 2; pkill -9 -f sllidar_node; pkill -9 -f pinky_bringup/bringup; sleep 1
 export ROS_STATIC_PEERS=$PC_IP
 nohup setsid bash -ic 'export ROS_DOMAIN_ID=$DOMAIN ROS_STATIC_PEERS=$PC_IP; ros2 launch pinky_bringup bringup_robot.launch.xml' >~/start_bringup.log 2>&1 </dev/null &
 sleep 3
