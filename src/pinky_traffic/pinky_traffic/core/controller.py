@@ -135,6 +135,7 @@ class LaneController:
         self.t_route = 0.0                  # 통로에 들어선 시각
         self.end_hits = 0                   # 칸 끝 선이 정지 행까지 온 연속 프레임 수
         self.events = []                    # (t, 문자열) 최근 이벤트
+        self.finish_hits = 0
         self.t_go = 0.0                     # 이 시각까지는 출발하지 않는다 (2차선 지연 출발)
         self.yaw = None                     # 오도메트리 방향 (rad)
         self.yaw_start = None
@@ -174,6 +175,8 @@ class LaneController:
         self.exiting = False                # 2차선: 칸에서 나오는 중
         self.cleared = False                # 경로를 마치고 구간을 벗어났다 (락 반납, 깃발 내림)
         self.flag_up = False                # 1차선: oncoming 깃발을 올려 두었다
+        self.flag_lowered = False           # 1차선: 경로를 마치고 깃발을 내렸다 (다시 올리지 않는다)
+        self.cross_at_done = None           # 경로를 마친 순간의 횡단보도 통과 횟수 (그 뒤 한 번 더 건너면 도착선을 본다)
         self.t_decide = None                # 2차선: 직우 표지판 위에서 깃발을 기다리기 시작한 시각
         self.saw_robot = False              # 2차선: 칸에서 상대 로봇을 봤다
         self.t_robot = 0.0
@@ -275,6 +278,13 @@ class LaneController:
 
     def _clear_step(self, now):
         """경로를 마친 뒤 junction_clear_sec 동안 흰 차선을 따라 구간을 벗어나고, 락을 내주고 깃발을 내린다."""
+        if now - self.t_mode >= self.cfg.oncoming_clear_sec and not self.flag_lowered:
+            # 차선 따라가기로 돌아와 oncoming_clear_sec 지났다 = 칸 앞을 벗어났다 -> 깃발·락을 먼저 내려 칸의 2차선이 나오게 한다
+            # (현장 요청: 8초 뒤(횡단보도 출발쯤)에야 나와서 늦다)
+            self.flag_lowered = True
+            self._junction(False)
+            self._flag(False)
+            self.events.append((now, 'oncoming flag down'))
         if self.junction_held:
             self._junction(True)
         if now - self.t_mode >= self.cfg.junction_clear_sec:
@@ -454,7 +464,7 @@ class LaneController:
         if cfg.lane_role == 1:
             if p.signs and not self.flag_up and not self.cleared:
                 self.events.append((now, 'oncoming flag up'))
-            if (p.signs or self.flag_up) and not self.cleared:
+            if (p.signs or self.flag_up) and not self.cleared and not self.flag_lowered:
                 self._flag(True)
         if self.junction_held and not self.cleared:
             self._junction(True)                      # 하트비트
@@ -705,7 +715,7 @@ class LaneController:
             return Command(0.0, 0.0, self.state, f'start in {self.t_go - now:.0f}s')   # 2차선은 조금 늦게 출발
         if self.junction_held and self.state in MANEUVERS:
             self._junction(True)                      # 기동 중에도 락을 계속 쥔다 (하트비트)
-        if cfg.lane_role == 1 and self.flag_up and not self.cleared:
+        if cfg.lane_role == 1 and self.flag_up and not self.cleared and not self.flag_lowered:
             self._flag(True)
         if cfg.lane_role == 2 and (self.lane2_up or (self.plan and not (self.pocket_parked or self.plan_done))):
             self._flag2(True)                         # 표지판 기동 중에도 '2차선 진행 중' 깃발을 계속 올린다 (안 부르면 4초 뒤 사라진다)
@@ -933,6 +943,21 @@ class LaneController:
             self._go(BLOCKED, now, f'front={front_m}')
             return Command(0.0, 0.0, BLOCKED)
 
+        # ---- 도착선: 경로를 다 마치고 횡단보도를 한 번 더 건넌 뒤, 초록 가로선이 발 앞에 오면 선다 (출발 지점에 깐 초록 선) ----
+        if cfg.lane_role and self.plan_done and cfg.finish_line:
+            if self.cross_at_done is None:
+                self.cross_at_done = self.crossings
+            hit = self.state == LANE_FOLLOW and self.crossings > self.cross_at_done and p.zone_seen \
+                and p.zone_y >= cfg.finish_line_row
+            self.finish_hits = self.finish_hits + 1 if hit else 0
+            if self.finish_hits >= 2:
+                self._release()
+                self._junction(False)
+                self._flag(False)
+                self._flag2(False)
+                self.events.append((now, f'finish line y={p.zone_y:.2f}'))
+                self._go(PARKED, now, 'finish')
+                return Command(0.0, 0.0, PARKED, 'finish')
         if p.ok:
             self.t_seen = now
             # 차선 중심이 갑자기 크게 튀면 2프레임까지는 무시한다. 그 뒤에도 같으면 믿는다.
@@ -991,6 +1016,8 @@ class LaneController:
             if self.cw_hits == 1:
                 self.cw_first_y = p.crosswalk_y              # 발밑(0.72 아래)에서 처음 나타난 것은 여전히 코너 조각으로 본다
             late_ok = self.cw_hits >= cfg.crosswalk_confirm and self.cw_first_y < cfg.crosswalk_stop_row - 0.08
+            # 아주 오래(crosswalk_confirm 의 3배) 계속 보이면 발밑에서 처음 잡혔어도 진짜다 (카메라가 들려 줄무늬가 화면 아래에서 처음 나타날 때)
+            late_ok = late_ok or self.cw_hits >= 3 * cfg.crosswalk_confirm
             if p.crosswalk and cooled and (p.crosswalk_y < cfg.crosswalk_stop_row - 0.12 or late_ok):
                 self._go(APPROACH, now, f'crosswalk y={p.crosswalk_y:.2f}')
             else:

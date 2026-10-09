@@ -990,3 +990,32 @@ def test_lane2_switches_to_pocket_when_flag_arrives_right_after_deciding_straigh
     assert c.plan_name == 'plan_lane2_pocket' and c.action == 'right'
     run_flag(c, clock, see(), clock.t + 9.0, flag=True)
     assert c.pocket_mode                                                  # 우회전해서 칸으로
+
+
+def test_finish_line_stops_after_route_and_one_more_crosswalk():
+    c = started(lane_role=1, **dict(SIGN, plan_lane1='turn:right, turn:right', crosswalk_stop_sec=1.0, crossing_sec=1.0,
+                                    crosswalk_cooldown_sec=0.0, finish_line_row=0.80))
+    c.step(see(), 1.0, 0.1)
+    cmd, t = through(c, AT_T, FAR_T, 0.1, 'right')
+    cmd, t = through(c, AT_T, FAR_T, t, 'right')
+    cmd, t = run(c, see(zone_seen=True, zone_y=0.9), t, t + 1.0)
+    assert c.plan_done and c.state == LANE_FOLLOW                         # 아직 횡단보도를 안 건넜다 (칸의 초록 선일 수 있다) -> 안 선다
+    cmd, t = run(c, see(crosswalk=True, crosswalk_y=0.5), t, t + 0.3)
+    cmd, t = run(c, see(crosswalk=True, crosswalk_y=0.85), t, t + 1.5)
+    cmd, t = run(c, see(), t, t + 2.0)
+    assert c.crossings == 1 and c.state == LANE_FOLLOW
+    cmd, t = run(c, see(zone_seen=True, zone_y=0.9), t, t + 0.4)
+    assert c.state == 'parked' and cmd.v == 0                             # 도착선
+
+
+def test_lane1_lowers_flag_three_seconds_after_back_on_lanes():
+    clock = Clock()
+    a = started(LocalLock(clock.mgr, 'a'), lane_role=1, **dict(POCKET, plan_lane1='turn:right, turn:right', oncoming_clear_sec=3.0))
+    run_flag(a, clock, see(), 0.1)
+    run_flag(a, clock, FAR_T, 0.2)
+    through(a, AT_T, FAR_T, clock.t, 'right', clock)
+    through(a, AT_T, FAR_T, clock.t, 'right', clock)
+    run_flag(a, clock, see(), clock.t + 2.0)
+    assert clock.mgr.flags_of_others('b') == ['oncoming']
+    run_flag(a, clock, see(), clock.t + 1.5)
+    assert clock.mgr.flags_of_others('b') == [] and not a.cleared         # 3초 뒤 깃발만 먼저 내린다
