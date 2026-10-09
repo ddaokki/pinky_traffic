@@ -140,6 +140,7 @@ class Config:
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 4.0     # 다음 표지판 탐색 제한. 넘으면 경로를 보존하고 정지
     sign_backoff_m: float = 0.12     # 회전 직후 다음 표지판이 카메라 바로 밑이면 전체가 보일 때까지 후진 (최대 이만큼)
+    sign_remnant_far_row: float = 0.60   # 긴 직우를 지난 직후: 먼 끝이 이 행보다 아래인 파랑은 발밑에 남은 직우 조각으로 보고 무시
     sign_backoff_x: float = 0.90     # 회전 뒤 발밑 표지판이 가로로 이 안이면 물러나서 본다 (구석에 걸린 것도)
     sign_backoff_far_row: float = 0.65   # 표지판 먼 끝이 이 행보다 위로 올라오면 다 보이는 것 -> 후진 끝
     sign_backoff_settle_sec: float = 0.8 # 후진을 멈춘 뒤 이만큼 서서 표지판을 본 다음 고른다

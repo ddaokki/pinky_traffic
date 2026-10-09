@@ -249,6 +249,10 @@ class LaneController:
             return min(near, key=lambda s: abs(s[1] - self.target[1]) + abs(s[2] - self.target[2])
                        + abs(s[3] - self.target[3])) if near else None
         searching = self.state == SIGN_SEARCH or self.exiting
+        if searching and not self.exiting and self._after_long_sign():
+            # 방금 지난 긴 직우의 조각이 발밑에 남아 보인다 -> 그건 다음 표지판이 아니다 (먼 끝이 화면 0.6 아래인 것은 뺀다)
+            # (2026-10-10 pinky2: 칸에서 나와 직우에서 우회전한 뒤, 발밑의 직우 끝을 다음 좌회전 표지판으로 골라 그 자리에서 좌회전)
+            ok = [s for s in ok if s[2] < self.cfg.sign_remnant_far_row]
         if searching and not self.exiting and self.backoff_run > 0:
             # 물러나서 다시 본 바로 앞 표지판이 다음 표지판이다. 옆에서 본 화살표는 길쭉해 모양 분류가 틀리므로 종류를 안 따진다
             # 물러난 뒤에는 표지판이 화면 위로 조금 올라가 있다 (2026-10-10: 가까운 끝 0.85 기준에 못 미쳐 오른쪽 먼 표지판을 골라 그쪽으로 돎)
@@ -265,6 +269,10 @@ class LaneController:
         #  멀리 있는 유턴 구간 표지판을 골라 엉뚱한 곳에서 좌회전)
         mine = [s for s in ok if self._mine(s, searching)]
         return min(mine, key=lambda s: (round(-s[3] / 0.1), abs(s[1]))) if mine else None
+
+    def _after_long_sign(self):
+        """바로 전 표지판이 긴 직우(straight_right / any)였나."""
+        return 0 < self.plan_i <= len(self.plan) and self.plan[self.plan_i - 1][0] in ('straight_right', 'any')
 
     def _approach(self, sign, now, why):
         self.after_turn = self.state == SIGN_SEARCH          # 돈 뒤 다음 표지판: 먼저 제자리에서 정면으로 맞춘다
@@ -520,7 +528,7 @@ class LaneController:
         #  -> 표지판 전체가 보일 때까지(먼 끝이 sign_backoff_far_row 위로) 물러나고, 멈춰서 sign_backoff_settle_sec 동안 본 뒤 고른다)
         # 직진으로 지난 표지판은 발밑에 남아 있는 게 정상이므로, 제자리 회전을 한 뒤에만 물러난다.
         if self.state == SIGN_SEARCH and not self.exiting and not self.backoff_done and cfg.sign_backoff_m > 0 \
-                and self.action in ('right', 'left'):
+                and self.action in ('right', 'left') and not self._after_long_sign():
             # 발밑 표지판이 화면 구석(옆)에 걸려도 물러난다 (2026-10-10: R2 가 오른쪽 아래 구석 x 0.8 이라 후진 없이 전진)
             close = [s for s in p.signs if abs(s[1]) <= cfg.sign_backoff_x and s[2] >= cfg.sign_backoff_far_row]
             if close and self.backoff_run < cfg.sign_backoff_m:

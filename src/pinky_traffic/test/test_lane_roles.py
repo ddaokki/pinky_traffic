@@ -1045,3 +1045,15 @@ def test_lane1_flag_goes_down_even_while_stopped_at_crosswalk():
     run_flag(a, clock, see(crosswalk=True, crosswalk_y=0.5), clock.t + 0.5)
     run_flag(a, clock, see(crosswalk=True, crosswalk_y=0.85), clock.t + 2.5)   # 횡단보도 앞에 서 있다
     assert a.state in ('stop_at_crosswalk', 'approach_crosswalk', 'crossing') and clock.mgr.flags_of_others('b') == []
+
+
+def test_remnant_of_long_sign_underfoot_is_not_the_next_sign():
+    # 2026-10-10 pinky2: 칸에서 나와 직우에서 우회전한 뒤 발밑의 직우 끝(먼 끝 0.63)을 다음 표지판으로 골라 그 자리에서 좌회전
+    c = started(lane_role=2, **dict(SIGN, sign_backoff_m=0.12))
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('any', 'right'), ('turn', 'left'), ('turn', 'left')], [None] * 3, 1, 'plan_lane2_exit'
+    c._go(SIGN_SEARCH, 0.0)
+    c.action = 'right'
+    p = see(signs=[('blue', 0.09, 0.63, 1.0), ('blue', -0.04, 0.41, 0.52), ('blue', -0.80, 0.40, 0.46)])
+    cmd = c.step(p, 1.0, 0.1)
+    assert cmd.v >= 0                                                    # 직우 조각 때문에 후진하지 않는다
+    assert c.state == SIGN_APPROACH and c.target[1] == -0.04             # 앞의 진짜 좌회전 표지판을 고른다
