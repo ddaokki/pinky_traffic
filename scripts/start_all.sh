@@ -12,7 +12,7 @@ ROBOTS=(
   "pinky1 192.168.129.199 24 0 true"
   "pinky2 192.168.129.200 23 0 true"
 )
-BACKEND="${BACKEND:-hsv}"     # 표지판·로봇을 YOLO 로: BACKEND=hsv+yolo scripts/start_all.sh (models/best.pt)
+BACKEND="${BACKEND:-hsv+yolo}"   # 차선은 색, 표지판·로봇은 YOLO(models/best.pt). 전부 색으로: BACKEND=hsv scripts/start_all.sh
 SSH_OPTS=(-o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
 
 say()  { echo -e "\n\033[1;36m▶ $*\033[0m"; }
