@@ -759,7 +759,9 @@ class LaneController:
             passed = self.saw_robot and now - self.t_robot >= cfg.pass_clear_sec
             # 나가는 건 1차선 깃발이 내려갔을 때 (= 1차선이 구간을 다 벗어났다). 로봇이 잠깐 안 보인 것만으로는 안 나간다
             # (2026-10-09: YOLO 가 1.5초 놓치자 '지나갔다'로 보고 1차선이 아직 앞에 있는데 출발). 너무 오래면 lane2_exit_max_sec 뒤 나간다
-            go = not self._oncoming() or now - self.t_state > cfg.lane2_exit_max_sec
+            # 깃발이 내려갔어도 상대 로봇이 지금 앞에 보이면(YOLO·라이다, 최근 pass_clear_sec 안) 지나갈 때까지 더 기다린다
+            in_view = self.saw_robot and now - self.t_robot < cfg.pass_clear_sec
+            go = (not self._oncoming() and not in_view) or now - self.t_state > cfg.lane2_exit_max_sec
             if now - self.t_state < cfg.exit_wait_sec or not go:
                 return Command(0.0, 0.0, WAIT_EXIT, 'robot seen' if self.saw_robot else 'wait oncoming')
             self.exiting, self.t_mode, self.t_seen = True, now, now

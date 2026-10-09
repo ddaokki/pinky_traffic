@@ -1019,3 +1019,15 @@ def test_lane1_lowers_flag_three_seconds_after_back_on_lanes():
     assert clock.mgr.flags_of_others('b') == ['oncoming']
     run_flag(a, clock, see(), clock.t + 1.5)
     assert clock.mgr.flags_of_others('b') == [] and not a.cleared         # 3초 뒤 깃발만 먼저 내린다
+
+
+def test_lane2_stays_in_pocket_while_robot_still_in_view_after_flag_down():
+    clock = Clock()
+    c = started(LocalLock(clock.mgr, 'b'), lane_role=2, **POCKET)
+    into_pocket(c, clock)
+    run_flag(c, clock, see(), clock.t + 3.0, flag=True)
+    clock.t += 5.0                                                       # 1차선 깃발이 내려갔다
+    cmd = run_flag(c, clock, see(obstacle_y=0.6), clock.t + 1.0)         # 그런데 로봇이 아직 앞에 보인다
+    assert cmd.state == WAIT_EXIT
+    cmd = run_flag(c, clock, see(), clock.t + 2.0)                       # 1.5초 넘게 안 보인다
+    assert c.exiting
