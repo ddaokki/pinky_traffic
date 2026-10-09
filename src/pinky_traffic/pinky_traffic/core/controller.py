@@ -236,9 +236,11 @@ class LaneController:
             near = [s for s in ok if abs(s[1] - self.target[1]) <= 0.5]
             return min(near, key=lambda s: abs(s[1] - self.target[1])) if near else None
         searching = self.state == SIGN_SEARCH or self.exiting
-        # 여러 개면 화면 가운데에 가까운 것 (2026-10-09 pinky1: R2 를 돈 뒤 오른쪽의 다른 파랑으로 가다 벽으로)
+        # 여러 개면 가장 가까운 것(화면 아래), 비슷하게 가까우면 가운데에 가까운 것
+        # (2026-10-09 pinky1: 둘 다 발밑일 때 오른쪽 다른 파랑으로 가다 벽 / pinky2: 가운데만 보고 고르니 바로 앞 좌회전 표지판 대신
+        #  멀리 있는 유턴 구간 표지판을 골라 엉뚱한 곳에서 좌회전)
         mine = [s for s in ok if self._mine(s, searching)]
-        return min(mine, key=lambda s: abs(s[1])) if mine else None
+        return min(mine, key=lambda s: (round(-s[3] / 0.1), abs(s[1]))) if mine else None
 
     def _approach(self, sign, now, why):
         self.after_turn = self.state == SIGN_SEARCH          # 돈 뒤 다음 표지판: 먼저 제자리에서 정면으로 맞춘다

@@ -127,15 +127,15 @@ class Config:
     # 2026-10-07 표지판 맵: 파란 선 대신 바닥의 파란 양방향 표지판 두 종류를 보고 그 자리에서 돈다.
     #   turn = 우회전 양방향(꺾인 화살표, 오는 방향에 따라 우회전/좌회전), straight_right = 직우 양방향(긴 ←→ 에 칸 쪽 가지)
     # 경로 = "표지판종류:행동" 을 만나는 순서대로 쉼표로. 행동 right|left|straight. 다 지나면 흰 차선을 따라간다.
-    plan_lane1: str = 'turn:right, turn:right:0.12'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> S 직진. 세 번째 칸 = 그 표지판만의 sign_advance_m
+    plan_lane1: str = 'turn:right, turn:right:0.07'    # 1차선: R1 우회전 -> R2 우회전(=유턴) -> lane1_exit_m 곧장. 세 번째 칸 = 그 표지판만의 sign_advance_m
     plan_lane2: str = 'straight_right:straight, turn:left, turn:left'      # 2차선, 상대가 안 온다: S 직진 -> 좌 -> 좌 (=유턴, 1차선으로)
-    plan_lane2_pocket: str = 'straight_right:right:0.03'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
+    plan_lane2_pocket: str = 'straight_right:right:0.0'                        # 2차선, 상대가 온다: S 에서 우회전해 초록 칸으로
     plan_lane2_exit: str = 'any:right, turn:left, turn:left'               # 칸에서 나와: 입구의 표지판(직우 가지)에서 우회전 -> 좌 -> 좌 (=유턴, 1차선으로)
     sign_stop_row: float = 0.80      # (2026-10-09 부터 안 씀) 예전: 표지판 먼 끝이 이 행에 오면 도착
     # 표지판을 따라가다 화면에서 완전히 사라지면 '도착' (가까운 끝이 sign_gone_row 아래까지 왔다가 sign_gone_sec 동안 안 보임)
     sign_gone_row: float = 0.85
     sign_gone_sec: float = 0.3
-    sign_advance_m: float = 0.07     # 도착(사라짐) 뒤 곧장 더 가는 거리. 가벽 쪽 R2 는 plan_lane1 에서 0.12 (2026-10-09 현장: 0.05 는 R2 에서 일찍 꺾어 가벽을 봄,
+    sign_advance_m: float = 0.02     # 도착(사라짐) 뒤 곧장 더 가는 거리 (현장: 0.07 은 5cm 쯤 더 가서 돎). R2 는 plan_lane1 에서 0.07 (2026-10-09 현장: 0.05 는 R2 에서 일찍 꺾어 가벽을 봄,
                                      # 0.12 는 R1 에서 너무 가서 돈 뒤 R2 가 화면 오른쪽 끝에 걸려 못 찾음). 카메라 앞 약 10cm 는 안 보이므로 0 이면 표지판 끝 약 10cm 앞에서 돈다
     sign_turn_deg: float = 90.0      # 표지판에서 제자리 회전 각도 (park_turn_w 속도로, 시간으로 잰다)
     sign_search_sec: float = 6.0     # 표지판을 지난 뒤 다음 표지판을 찾으며 곧장 가는 최대 시간. 넘으면 남은 경로를 버리고 흰 차선으로

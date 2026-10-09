@@ -782,3 +782,14 @@ def test_after_align_skip_still_steers_to_sign():
     assert c.align_off and not c.aligned
     cmd = c.step(sign('straight_right', x=0.4, far=0.8, near=1.0), 1.0, 0.3)
     assert cmd.v > 0 and cmd.w < 0                                       # 그래도 오른쪽의 표지판 쪽으로 꺾는다
+
+
+def test_nearest_sign_wins_over_centered_far_one():
+    # 2026-10-09 pinky2: 첫 좌회전 뒤 바로 앞(오른쪽 아래) 좌회전 표지판 대신 멀리 가운데의 유턴 구간 표지판을 골랐다
+    c = started(lane_role=2, **SIGN)
+    c.plan, c.plan_adv, c.plan_i, c.plan_name = [('straight_right', 'straight'), ('turn', 'left'), ('turn', 'left')], [None] * 3, 2, 'plan_lane2'
+    c._go(SIGN_SEARCH, 0.0)
+    p = see(signs=[('blue', 0.18, 0.4, 0.66), ('blue', 0.44, 0.7, 1.0)])
+    assert c._wanted_sign(p)[1] == 0.44
+    p = see(signs=[('blue', 0.6, 0.5, 1.0), ('blue', -0.1, 0.5, 0.98)])
+    assert c._wanted_sign(p)[1] == -0.1                                  # 둘 다 발밑이면 가운데 쪽
